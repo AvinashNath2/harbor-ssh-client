@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-surface text-text-primary font-sans;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  #root {
+    height: 100%;
+  }
+
+  input {
+    font-family: inherit;
+  }
+}
+
+/* xterm.js — subtle dark scrollbar (do NOT set background on .xterm-screen —
+   that layer holds the character cells and painting over it hides text) */
+.xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+.xterm-viewport::-webkit-scrollbar-track {
+  background: #1e2127;
+}
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: #3a3b3e;
+  border-radius: 4px;
+}

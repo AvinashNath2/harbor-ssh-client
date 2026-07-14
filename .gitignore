@@ -1,0 +1,44 @@
+# ── Node / frontend ──────────────────────────────────────────────────────────
+node_modules
+dist
+dist-ssr
+*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ── Rust / Tauri build artifacts ─────────────────────────────────────────────
+src-tauri/target/
+
+# Tauri auto-generates these from capabilities/ at build time
+src-tauri/gen/
+
+# ── App data / SQLite databases ───────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Design archives / binaries (not source code) ─────────────────────────────
+*.zip
+*.dmg
+*.app
