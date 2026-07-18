@@ -34,6 +34,11 @@ export function CommandPalette({
   const fileResults: PaletteResult[] = q
     ? entries
         .filter((e) => e.name.toLowerCase().includes(q))
+        .sort((a, b) => {
+          const aStarts = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+          const bStarts = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+          return aStarts - bStarts || a.name.localeCompare(b.name);
+        })
         .slice(0, 6)
         .map((entry) => ({ type: "file", entry }))
     : [];
@@ -45,6 +50,11 @@ export function CommandPalette({
             p.name.toLowerCase().includes(q) ||
             p.host.toLowerCase().includes(q),
         )
+        .sort((a, b) => {
+          const aStarts = a.name.toLowerCase().startsWith(q) || a.host.toLowerCase().startsWith(q) ? 0 : 1;
+          const bStarts = b.name.toLowerCase().startsWith(q) || b.host.toLowerCase().startsWith(q) ? 0 : 1;
+          return aStarts - bStarts;
+        })
         .slice(0, 5)
         .map((profile) => ({ type: "session", profile }))
     : [];

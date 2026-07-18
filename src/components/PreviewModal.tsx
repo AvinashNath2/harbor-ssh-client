@@ -60,6 +60,7 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
   const [content, setContent] = useState("");
   /** Working buffer used in edit mode. Diverges from `content` when dirty. */
   const [draft, setDraft] = useState("");
+  const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState("");
   const [wrap, setWrap] = useState(true);
   const [mode, setMode] = useState<"view" | "edit">("view");
@@ -124,15 +125,16 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
             setDraft(text);
             setState("text");
             const MAX = 50 * 1024;
-            const truncated = text.length > MAX;
+            const isTruncated = text.length > MAX;
+            setTruncated(isTruncated);
             onCommandLogged?.({
               executedAt: t0,
               cwd: entryDir,
               raw: `cat ${entry.path}`,
               exitCode: 0,
               durationMs: Date.now() - t0,
-              output: truncated ? text.slice(0, MAX) : text,
-              outputTruncated: truncated,
+              output: isTruncated ? text.slice(0, MAX) : text,
+              outputTruncated: isTruncated,
               originalOutputBytes: text.length,
               source: "file_browser",
             });
@@ -163,9 +165,16 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        // If focused in search box and query is set, first clear it.
-        if (document.activeElement === searchInputRef.current && query) {
-          setQuery("");
+        // If search box is focused: clear query first, then blur — never close directly from search.
+        if (document.activeElement === searchInputRef.current) {
+          if (query) setQuery("");
+          searchInputRef.current?.blur();
+          e.preventDefault();
+          return;
+        }
+        // If textarea is focused in edit mode: blur without closing.
+        if (document.activeElement === textareaRef.current) {
+          textareaRef.current?.blur();
           e.preventDefault();
           return;
         }
@@ -359,6 +368,14 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
             <X size={14} strokeWidth={2.2} />
           </button>
         </div>
+
+        {/* Truncation warning — shown when file was too large to load fully */}
+        {truncated && state === "text" && (
+          <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-5 py-2 text-[12px] text-[#8a6020]">
+            <span className="font-semibold">⚠ File truncated</span>
+            <span className="text-[#8a6020]/80">— showing first 50 KB only. Download the file to view or edit it fully.</span>
+          </div>
+        )}
 
         {/* Toolbar */}
         {state === "text" && (

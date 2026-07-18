@@ -78,6 +78,7 @@ export function FileBrowser({
   const [editingPath, setEditingPath] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   // Search + sort state — both are local view options, per-tab.
   const [search, setSearch] = useState("");
@@ -86,12 +87,14 @@ export function FileBrowser({
 
   // On-demand computed folder sizes. Keyed by full remote path.
   const [folderSizes, setFolderSizes] = useState<Record<string, number>>({});
+  const [loadingFolderSizes, setLoadingFolderSizes] = useState<Set<string>>(new Set());
   const inflightSizes = useRef<Set<string>>(new Set());
 
   // Reset search + folder sizes cache when the tab navigates elsewhere.
   useEffect(() => {
     setSearch("");
     setFolderSizes({});
+    setLoadingFolderSizes(new Set());
     inflightSizes.current.clear();
   }, [tab.path]);
 
@@ -100,10 +103,14 @@ export function FileBrowser({
     // so use `in` to detect the actually-cached case.
     if (path in folderSizes || inflightSizes.current.has(path)) return;
     inflightSizes.current.add(path);
+    setLoadingFolderSizes((prev) => new Set([...prev, path]));
     computeFolderSize(path)
       .then((size) => { setFolderSizes((prev) => ({ ...prev, [path]: size })); })
       .catch(() => undefined)
-      .finally(() => { inflightSizes.current.delete(path); });
+      .finally(() => {
+        inflightSizes.current.delete(path);
+        setLoadingFolderSizes((prev) => { const s = new Set(prev); s.delete(path); return s; });
+      });
   }
 
   // Filter + sort the entries. Folders always come first within a direction.
@@ -458,6 +465,17 @@ export function FileBrowser({
 
         {tab.status === "ready" && (
           <>
+            {renameError && (
+              <div className="flex items-center justify-between gap-3 border-b border-danger/20 bg-danger/10 px-4 py-2">
+                <span className="text-[12px] text-danger">Rename failed: {renameError}</span>
+                <button
+                  onClick={() => { setRenameError(null); }}
+                  className="text-[11px] text-danger/60 hover:text-danger"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             {/* ".." parent navigation row */}
             {tab.path !== "/" && (
               <div
@@ -489,12 +507,18 @@ export function FileBrowser({
                 compact={compact}
                 gridCols={gridCols}
                 folderSizes={folderSizes}
+                loadingFolderSizes={loadingFolderSizes}
                 onRowClick={handleRowClick}
                 onRowDoubleClick={handleRowDoubleClick}
                 onRowContextMenu={handleRowContextMenu}
                 onRenameCommit={(oldPath, newName) => {
                   setRenamingPath(null);
-                  if (newName) void onRename(oldPath, newName);
+                  if (newName) {
+                    setRenameError(null);
+                    onRename(oldPath, newName).catch((e: unknown) => {
+                      setRenameError(e instanceof Error ? e.message : String(e));
+                    });
+                  }
                 }}
               />
             )}
@@ -618,6 +642,7 @@ function FileList({
   compact,
   gridCols,
   folderSizes,
+  loadingFolderSizes,
   onRowClick,
   onRowDoubleClick,
   onRowContextMenu,
@@ -629,6 +654,7 @@ function FileList({
   compact: boolean;
   gridCols: string;
   folderSizes: Record<string, number>;
+  loadingFolderSizes: Set<string>;
   onRowClick: (e: React.MouseEvent, entry: FileEntry) => void;
   onRowDoubleClick: (entry: FileEntry) => void;
   onRowContextMenu: (e: React.MouseEvent, entry: FileEntry) => void;
@@ -645,6 +671,7 @@ function FileList({
           compact={compact}
           gridCols={gridCols}
           folderSize={entry.kind === "directory" ? folderSizes[entry.path] : undefined}
+          folderSizeLoading={entry.kind === "directory" ? loadingFolderSizes.has(entry.path) : false}
           onClick={onRowClick}
           onDoubleClick={onRowDoubleClick}
           onContextMenu={onRowContextMenu}
@@ -667,6 +694,7 @@ function FileRow({
   compact,
   gridCols,
   folderSize,
+  folderSizeLoading,
   onClick,
   onDoubleClick,
   onContextMenu,
@@ -679,6 +707,7 @@ function FileRow({
   compact: boolean;
   gridCols: string;
   folderSize?: number;
+  folderSizeLoading?: boolean;
   onClick: (e: React.MouseEvent, entry: FileEntry) => void;
   onDoubleClick: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, entry: FileEntry) => void;
@@ -767,7 +796,9 @@ function FileRow({
         {entry.kind === "directory"
           ? folderSize !== undefined
             ? formatSize(folderSize)
-            : "—"
+            : folderSizeLoading
+              ? <span className="animate-pulse text-text-faint">…</span>
+              : "—"
           : formatSize(entry.size)}
       </span>
 

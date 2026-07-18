@@ -91,6 +91,8 @@ function parseHarborOsc(body: string): OscEvent | null {
 export class OscParser {
   private inOsc = false;
   private oscBuf: number[] = [];
+  // Guard against malformed/unterminated sequences growing the buffer without bound.
+  private static readonly MAX_OSC = 65_536;
 
   feed(bytes: Uint8Array): ParseSegment[] {
     const segments: ParseSegment[] = [];
@@ -118,6 +120,11 @@ export class OscParser {
           i += 2;
         } else {
           this.oscBuf.push(b);
+          if (this.oscBuf.length > OscParser.MAX_OSC) {
+            // Runaway sequence — discard and return to normal mode.
+            this.inOsc = false;
+            this.oscBuf = [];
+          }
           i++;
         }
       } else {

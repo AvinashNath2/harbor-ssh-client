@@ -40,6 +40,7 @@ function folderKey(folder: string): string {
 interface SidebarProps {
   profiles: ConnectionProfile[];
   activeHost: string | null;
+  activeProfileId?: string | null;
   width?: number;
   onSelectProfile: (profile: ConnectionProfile) => void;
   onEditProfile: (profile: ConnectionProfile) => void;
@@ -54,6 +55,7 @@ interface SidebarProps {
 export function Sidebar({
   profiles,
   activeHost,
+  activeProfileId,
   width,
   onSelectProfile,
   onEditProfile,
@@ -103,9 +105,11 @@ export function Sidebar({
     });
   }
 
-  const activeProfileId = useMemo(
-    () => profiles.find((p) => activeHost === p.host)?.id ?? null,
-    [profiles, activeHost],
+  // Prefer an explicit profile ID (avoids false match when two profiles share the same host+port).
+  // Fall back to host matching for connections opened without a saved profile.
+  const resolvedActiveId = useMemo(
+    () => activeProfileId ?? profiles.find((p) => activeHost === p.host)?.id ?? null,
+    [profiles, activeHost, activeProfileId],
   );
 
   return (
@@ -188,7 +192,7 @@ export function Sidebar({
                 key={`fav-${profile.id}`}
                 profile={profile}
                 depth={1}
-                isActive={activeProfileId === profile.id}
+                isActive={resolvedActiveId === profile.id}
                 folderDotColor={folderColor(profile.folder ?? "General")}
                 onSelect={() => { onSelectProfile(profile); }}
                 onEdit={() => { onEditProfile(profile); }}
@@ -229,7 +233,7 @@ export function Sidebar({
                             key={profile.id}
                             profile={profile}
                             depth={2}
-                            isActive={activeProfileId === profile.id}
+                            isActive={resolvedActiveId === profile.id}
                             folderDotColor={folderColor(folder)}
                             onSelect={() => { onSelectProfile(profile); }}
                             onEdit={() => { onEditProfile(profile); }}
@@ -321,6 +325,7 @@ function TreeCaret({
         <span
           className="h-2 w-2 flex-shrink-0 rounded-[3px]"
           style={{ background: dotColor }}
+          title="Folder colour is assigned automatically based on name (prod=red, stag=amber, dev=blue, personal=purple, local=teal)"
         />
       )}
       <span
@@ -403,10 +408,13 @@ function SessionRow({
       )}
 
       {!isActive && (
-        <div className="hidden flex-shrink-0 items-center gap-0.5 group-hover:flex">
+        <div className="flex flex-shrink-0 items-center gap-0.5">
+          {/* Star — always shown when favorited; hidden-until-hover otherwise */}
           <button
             onClick={(e) => { e.stopPropagation(); onStar(); }}
-            className="flex h-5 w-5 items-center justify-center rounded transition-colors hover:text-warning"
+            className={`flex h-5 w-5 items-center justify-center rounded transition-colors hover:text-warning ${
+              profile.favorite ? "" : "opacity-0 group-hover:opacity-100"
+            }`}
             style={{ color: profile.favorite ? "#e0a53c" : undefined }}
             title={profile.favorite ? "Unstar" : "Star"}
           >
@@ -414,14 +422,14 @@ function SessionRow({
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onEdit(); }}
-            className="flex h-5 w-5 items-center justify-center rounded text-text-faint transition-colors hover:text-accent-dark"
+            className="flex h-5 w-5 items-center justify-center rounded text-text-faint opacity-0 transition-colors group-hover:opacity-100 hover:text-accent-dark"
             title="Edit"
           >
             <Pencil size={11} strokeWidth={2} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="flex h-5 w-5 items-center justify-center rounded text-text-faint transition-colors hover:text-danger"
+            className="flex h-5 w-5 items-center justify-center rounded text-text-faint opacity-0 transition-colors group-hover:opacity-100 hover:text-danger"
             title="Delete"
           >
             <X size={11} strokeWidth={2.2} />

@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, Copy, Download, FolderSearch, TerminalSquare } 
 import type { CommandSource } from "../api";
 import { useEffect, useState } from "react";
 import { loadSession, type CommandRecord, type SessionRecord } from "../api";
+import { fmtDuration, fmtSessionDuration } from "../utils/fmtDuration";
 
 interface SessionDetailViewProps {
   session: SessionRecord;
@@ -13,26 +14,10 @@ function fmtTime(ms: number) {
   });
 }
 
-function fmtDuration(ms: number | null): string {
-  if (ms === null) return "—";
-  if (ms < 1000) return `${ms.toString()}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60000).toString()}m ${Math.floor((ms % 60000) / 1000).toString()}s`;
-}
-
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n.toString()} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function fmtSessionDuration(startMs: number, endMs: number | null): string {
-  if (!endMs) return "Active";
-  const s = Math.floor((endMs - startMs) / 1000);
-  if (s < 60) return `${s.toString()}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m.toString()}m`;
-  return `${Math.floor(m / 60).toString()}h ${(m % 60).toString()}m`;
 }
 
 function SourceBadge({ source }: { source: CommandSource | null }) {
@@ -161,30 +146,29 @@ export function SessionDetailView({ session }: SessionDetailViewProps) {
   }, [session.id]);
 
   function handleExport() {
-    const lines: string[] = [
-      `Harbor Session Log`,
-      `Session: ${session.username}@${session.host} (${session.ip})`,
-      `Started:  ${new Date(session.startedAt).toISOString()}`,
-      `Ended:    ${session.endedAt ? new Date(session.endedAt).toISOString() : "Active"}`,
-      `Duration: ${fmtSessionDuration(session.startedAt, session.endedAt)}`,
-      `Commands: ${session.cmdCount.toString()}`,
-      "",
-      "═".repeat(60),
-      "",
+    // Build export as an array of Blob parts to avoid concatenating one giant string.
+    const parts: string[] = [
+      `Harbor Session Log\n`,
+      `Session: ${session.username}@${session.host} (${session.ip})\n`,
+      `Started:  ${new Date(session.startedAt).toISOString()}\n`,
+      `Ended:    ${session.endedAt ? new Date(session.endedAt).toISOString() : "Active"}\n`,
+      `Duration: ${fmtSessionDuration(session.startedAt, session.endedAt)}\n`,
+      `Commands: ${session.cmdCount.toString()}\n\n`,
+      `${"═".repeat(60)}\n\n`,
     ];
     for (const cmd of commands) {
-      lines.push(`#${cmd.idx.toString()}  ${fmtTime(cmd.executedAt)}  ${cmd.cwd}`);
-      lines.push(`$ ${cmd.raw}`);
-      lines.push(`EXIT: ${cmd.exitCode?.toString() ?? "—"}  DURATION: ${fmtDuration(cmd.durationMs)}`);
+      parts.push(`#${cmd.idx.toString()}  ${fmtTime(cmd.executedAt)}  ${cmd.cwd}\n`);
+      parts.push(`$ ${cmd.raw}\n`);
+      parts.push(`EXIT: ${cmd.exitCode?.toString() ?? "—"}  DURATION: ${fmtDuration(cmd.durationMs)}\n`);
       if (cmd.output) {
-        lines.push(cmd.output);
+        parts.push(cmd.output);
         if (cmd.outputTruncated) {
-          lines.push(`[OUTPUT TRUNCATED — original: ${fmtBytes(cmd.originalOutputBytes)}]`);
+          parts.push(`\n[OUTPUT TRUNCATED — original: ${fmtBytes(cmd.originalOutputBytes)}]`);
         }
       }
-      lines.push("");
+      parts.push("\n\n");
     }
-    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const blob = new Blob(parts, { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

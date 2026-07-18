@@ -5,6 +5,7 @@ interface ReconnectingBannerProps {
   host: string;
   attempt: number;
   maxAttempts: number;
+  reason?: string | null;
   onDismiss?: () => void;
 }
 
@@ -17,6 +18,7 @@ export function ReconnectingBanner({
   host,
   attempt,
   maxAttempts,
+  reason,
   onDismiss,
 }: ReconnectingBannerProps) {
   const isFailure = status === "failed";
@@ -63,6 +65,11 @@ export function ReconnectingBanner({
           {!isFailure && (
             <span className="mt-0.5 font-mono text-[10.5px] text-text-tertiary">
               Attempt {attempt.toString()} of {maxAttempts.toString()}
+            </span>
+          )}
+          {isFailure && reason && (
+            <span className="mt-0.5 font-mono text-[10.5px] text-danger/70">
+              {reason}
             </span>
           )}
         </div>

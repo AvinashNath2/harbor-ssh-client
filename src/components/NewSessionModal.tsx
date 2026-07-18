@@ -1,4 +1,5 @@
-import { AlertTriangle, Check, ChevronDown, Key, Plus, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, FolderOpen, Key, Plus, X } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
 import { testConnection, type ConnectArgs, type ConnectionProfile } from "../api";
 
@@ -203,6 +204,7 @@ export function NewSessionModal({
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
+                maxLength={80}
                 className={fieldClass}
               />
             </div>
@@ -221,6 +223,7 @@ export function NewSessionModal({
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
+                  maxLength={253}
                   className={`${fieldClass} font-mono`}
                 />
               </div>
@@ -254,6 +257,7 @@ export function NewSessionModal({
                 autoCorrect="off"
                 spellCheck={false}
                 autoComplete="username"
+                maxLength={64}
                 className={`${fieldClass} font-mono`}
               />
             </div>
@@ -304,11 +308,21 @@ export function NewSessionModal({
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
+                    maxLength={512}
                     className="flex-1 bg-transparent font-mono text-[12px] text-text-primary outline-none placeholder:text-text-faint"
                   />
-                  <span className="rounded-chip bg-surface-chip px-[11px] py-1.5 text-[11px] font-semibold text-text-secondary">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void openDialog({ multiple: false, directory: false }).then((path) => {
+                        if (typeof path === "string") setKeyPath(path);
+                      });
+                    }}
+                    className="flex items-center gap-1 rounded-chip bg-surface-chip px-[11px] py-1.5 text-[11px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  >
+                    <FolderOpen size={10} strokeWidth={2} />
                     Browse…
-                  </span>
+                  </button>
                 </div>
                 <div className="mt-2">
                   <FieldLabel>Passphrase (optional)</FieldLabel>
@@ -485,7 +499,10 @@ export function NewSessionModal({
 
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => {
+                  if (isDirty && !window.confirm("Discard unsaved changes?")) return;
+                  onClose();
+                }}
                 className="rounded-input px-4 py-2 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-chip hover:text-text-primary"
               >
                 Cancel

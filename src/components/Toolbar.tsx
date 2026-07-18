@@ -130,7 +130,13 @@ export function Toolbar({
       </div>
 
       {busy && (
-        <span className="animate-pulse font-mono text-[11px] text-text-tertiary">Working…</span>
+        <div className="flex items-center gap-1.5 rounded-[7px] border border-accent-dark/30 bg-accent/10 px-2.5 py-1">
+          <span
+            className="inline-block h-3 w-3 flex-shrink-0 animate-spin rounded-full border-2"
+            style={{ borderColor: "#3f7be0", borderTopColor: "transparent" }}
+          />
+          <span className="font-mono text-[11px] font-medium text-accent-dark">Working…</span>
+        </div>
       )}
 
       <div className="flex-1" />

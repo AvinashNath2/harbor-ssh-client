@@ -56,7 +56,7 @@ export default function App() {
   const [reconnectStatus, setReconnectStatus] = useState<
     | { kind: "idle" }
     | { kind: "reconnecting"; attempt: number; max: number; host: string }
-    | { kind: "failed"; host: string }
+    | { kind: "failed"; host: string; reason?: string }
   >({ kind: "idle" });
   const reconnectRunRef = useRef<Promise<boolean> | null>(null);
 
@@ -161,6 +161,7 @@ export default function App() {
     // (session log handles per-command tracking; no-op here)
     const run = (async () => {
       const MAX = 3;
+      let lastError: string | undefined;
       for (let i = 0; i < MAX; i++) {
         setReconnectStatus({
           kind: "reconnecting",
@@ -176,10 +177,12 @@ export default function App() {
           await reconnectApi();
           setReconnectStatus({ kind: "idle" });
           return true;
-        } catch { /* try again */ }
+        } catch (e) {
+          lastError = e instanceof Error ? e.message : String(e);
+        }
       }
       // All attempts failed — fall back to the previous behavior.
-      setReconnectStatus({ kind: "failed", host: runningHost });
+      setReconnectStatus({ kind: "failed", host: runningHost, reason: lastError });
       void disconnect();
       openModal(null);
       return false;
@@ -234,6 +237,7 @@ export default function App() {
           host={reconnectStatus.host}
           attempt={0}
           maxAttempts={0}
+          reason={reconnectStatus.reason}
           onDismiss={() => { setReconnectStatus({ kind: "idle" }); }}
         />
       )}
@@ -707,6 +711,7 @@ function ConnectedApp({
             <Sidebar
               profiles={profiles}
               activeHost={activeHost}
+              activeProfileId={activeProfile?.id ?? null}
               width={sidebarWidth}
               onSelectProfile={(p) => {
                 onSelectProfile(p);

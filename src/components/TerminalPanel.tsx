@@ -237,8 +237,23 @@ export function TerminalPanel({ serverLabel, profiles, currentHost, onClose, onC
             {tab.status === "error" && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
-                  <p className="text-[13px] text-red-400">Terminal error</p>
+                  <p className="text-[13px] font-semibold text-red-400">Terminal failed to open</p>
                   <p className="mt-1 font-mono text-[11px] text-gray-500">{tab.error}</p>
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => { void openNewTab(); }}
+                      className="rounded-input px-4 py-1.5 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
+                      style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
+                    >
+                      Retry
+                    </button>
+                    <button
+                      onClick={() => { handleCloseTab(tab.id); }}
+                      className="rounded-input border border-border-input px-3 py-1.5 text-[12.5px] font-medium text-gray-400 transition-colors hover:text-gray-200"
+                    >
+                      Close tab
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -670,8 +685,8 @@ function XTermView({
       if (cols >= 20 && rows >= 3) {
         void resizeTerminal(terminalId, cols, rows);
       }
-    } catch {
-      // ignore fit errors during rapid resize
+    } catch (e) {
+      console.warn("[Harbor] terminal fit error:", e);
     }
   }, [terminalId]);
 

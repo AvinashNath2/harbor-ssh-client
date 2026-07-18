@@ -1,6 +1,7 @@
 import { Bookmark, Clock, Search, Terminal, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { deleteSession, listSessions, type SessionRecord } from "../api";
+import { fmtSessionDuration } from "../utils/fmtDuration";
 
 interface SessionListViewProps {
   onOpen: (session: SessionRecord) => void;
@@ -30,14 +31,6 @@ function fmtTime(ms: number) {
   return new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
-function fmtDuration(startMs: number, endMs: number | null): string {
-  if (!endMs) return "Active";
-  const s = Math.floor((endMs - startMs) / 1000);
-  if (s < 60) return `${s.toString()}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m.toString()}m ${(s % 60).toString()}s`;
-  return `${Math.floor(m / 60).toString()}h ${(m % 60).toString()}m`;
-}
 
 export function SessionListView({ onOpen }: SessionListViewProps) {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -169,7 +162,7 @@ export function SessionListView({ onOpen }: SessionListViewProps) {
                       {s.endedAt && ` – ${fmtTime(s.endedAt)}`}
                     </span>
                     <span>·</span>
-                    <span>{fmtDuration(s.startedAt, s.endedAt)}</span>
+                    <span>{fmtSessionDuration(s.startedAt, s.endedAt)}</span>
                   </div>
                 </div>
 

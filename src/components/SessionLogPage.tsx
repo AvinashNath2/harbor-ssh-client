@@ -39,13 +39,18 @@ export function SessionLogPage({ onClose }: SessionLogPageProps) {
         {/* Breadcrumb */}
         <div className="flex items-center gap-1.5 text-text-faint">
           <ChevronRight size={13} strokeWidth={2} />
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <Terminal size={13} strokeWidth={2} />
             <span className="text-[13px] font-semibold text-text-primary">
               {view.kind === "list"
                 ? "Session Log"
                 : `${view.session.username}@${view.session.host}`}
             </span>
+            {view.kind === "list" && (
+              <span className="font-mono text-[10.5px] text-text-faint">
+                — all sessions across all servers
+              </span>
+            )}
           </div>
           {view.kind === "detail" && (
             <>

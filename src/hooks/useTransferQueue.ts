@@ -169,6 +169,18 @@ export function useTransferQueue() {
   const activeCount = transfers.filter((t) => t.status === "active").length;
   const pendingCount = transfers.filter((t) => t.status === "pending").length;
 
+  // Auto-clear completed/cancelled/error transfers 5 seconds after all activity stops.
+  useEffect(() => {
+    const hasCompleted = transfers.some(
+      (t) => t.status === "done" || t.status === "error" || t.status === "cancelled",
+    );
+    if (!hasCompleted || activeCount > 0 || pendingCount > 0) return;
+    const timer = setTimeout(() => {
+      setTransfers((prev) => prev.filter((t) => t.status === "pending" || t.status === "active"));
+    }, 5000);
+    return () => { clearTimeout(timer); };
+  }, [transfers, activeCount, pendingCount]);
+
   return {
     transfers,
     enqueueDownload,

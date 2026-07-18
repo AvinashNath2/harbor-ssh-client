@@ -1,5 +1,5 @@
-import { Eye, FileText, Folder, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Check, Eye, FileText, Folder, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { chmodFile, getFileInfo, type FileEntry, type FileInfo } from "../api";
 import type { PendingCommand } from "../hooks/useSessionLog";
 import { PreviewModal } from "./PreviewModal";
@@ -168,6 +168,9 @@ export function FileDetailPanel({
 // ── Info tab ──────────────────────────────────────────────────────────────────
 
 function InfoTab({ info, error }: { info: FileInfo | null; entry: FileEntry; error: string | null }) {
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   if (error) {
     return <div className="px-4 py-6 text-center text-[12px] text-danger">{error}</div>;
   }
@@ -185,19 +188,37 @@ function InfoTab({ info, error }: { info: FileInfo | null; entry: FileEntry; err
     ["Octal", info.permOctal ?? "—"],
   ];
 
+  function handleCopy(label: string, value: string) {
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopiedLabel(label);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => { setCopiedLabel(null); }, 1500);
+    });
+  }
+
   return (
     <div className="flex flex-col gap-0 px-4 py-3">
       {rows.map(([label, value]) => (
         <div key={label} className="border-b border-border py-2.5 last:border-0">
-          <div className="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-[1px] text-text-faint">
-            {label}
+          <div className="mb-1 flex items-center justify-between">
+            <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[1px] text-text-faint">
+              {label}
+            </span>
+            {copiedLabel === label && (
+              <span className="flex items-center gap-0.5 font-mono text-[9px] text-success">
+                <Check size={9} strokeWidth={2.5} /> Copied
+              </span>
+            )}
           </div>
           <input
             readOnly
             value={value}
-            onClick={(e) => { (e.target as HTMLInputElement).select(); }}
-            className="w-full cursor-text rounded border border-border-input bg-surface-colheader px-2 py-1 font-mono text-[11.5px] text-text-primary outline-none focus:border-accent-dark"
-            title="Click to select, ⌘C to copy"
+            onClick={(e) => {
+              (e.target as HTMLInputElement).select();
+              handleCopy(label, value);
+            }}
+            className="w-full cursor-pointer rounded border border-border-input bg-surface-colheader px-2 py-1 font-mono text-[11.5px] text-text-primary outline-none focus:border-accent-dark"
+            title="Click to copy"
           />
         </div>
       ))}
@@ -246,8 +267,9 @@ function PermissionsTab({
     try {
       await chmodFile(entry.path, bits);
       setMsg({ ok: true, text: `Mode set to ${modeStr}` });
-      onRefresh();
       onDoneEditing();
+      // Refresh after leaving edit mode so the UI reflects the confirmed value.
+      onRefresh();
     } catch (e: unknown) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -266,7 +288,10 @@ function PermissionsTab({
     <div className="px-4 py-4">
       <div className="mb-3 font-mono text-[11px] text-text-faint">
         Current: <span className="text-text-primary">{info.permissions ?? "—"}</span>
-        <span className="ml-2 text-text-faint">({toOctalStr(perms)})</span>
+        <span
+          className="ml-2 text-text-faint cursor-help"
+          title="Octal notation: digits represent Owner / Group / Other. Each digit sums Read(4) + Write(2) + Execute(1). e.g. 755 = owner rwx, group r-x, other r-x"
+        >({toOctalStr(perms)})</span>
         {!editable && (
           <span className="ml-2 rounded-chip bg-surface-chip px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.5px] text-text-secondary">
             Read-only

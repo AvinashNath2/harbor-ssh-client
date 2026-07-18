@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 export interface ContextMenuItem {
   label: string;
@@ -18,6 +18,20 @@ interface ContextMenuProps {
 
 export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+
+  // Clamp menu to stay within the viewport after it's painted.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const pad = 8;
+    if (rect.right > window.innerWidth - pad) {
+      el.style.left = `${Math.max(pad, window.innerWidth - rect.width - pad).toString()}px`;
+    }
+    if (rect.bottom > window.innerHeight - pad) {
+      el.style.top = `${Math.max(pad, window.innerHeight - rect.height - pad).toString()}px`;
+    }
+  }, []);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
