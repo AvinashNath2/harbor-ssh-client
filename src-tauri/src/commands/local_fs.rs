@@ -48,3 +48,56 @@ pub fn list_local_folder(path: String) -> Result<Vec<LocalFileEntry>, AppError> 
 
     Ok(entries)
 }
+
+#[tauri::command]
+pub fn rename_local_path(old_path: String, new_name: String) -> Result<(), AppError> {
+    let old = std::path::Path::new(&old_path);
+    let parent = old
+        .parent()
+        .ok_or_else(|| AppError::internal("Cannot determine parent directory"))?;
+    let new = parent.join(&new_name);
+    std::fs::rename(old, &new)
+        .map_err(|e| AppError::internal(format!("Failed to rename: {e}")))
+}
+
+#[tauri::command]
+pub fn delete_local_path(path: String) -> Result<(), AppError> {
+    let p = std::path::Path::new(&path);
+    if p.is_dir() {
+        std::fs::remove_dir_all(p)
+            .map_err(|e| AppError::internal(format!("Failed to delete directory: {e}")))
+    } else {
+        std::fs::remove_file(p)
+            .map_err(|e| AppError::internal(format!("Failed to delete file: {e}")))
+    }
+}
+
+#[tauri::command]
+pub fn reveal_in_finder(path: String) -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| AppError::internal(format!("Failed to reveal in Finder: {e}")))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{}", path))
+            .spawn()
+            .map_err(|e| AppError::internal(format!("Failed to reveal in Explorer: {e}")))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let parent = std::path::Path::new(&path)
+            .parent()
+            .unwrap_or(std::path::Path::new("/"));
+        std::process::Command::new("xdg-open")
+            .arg(parent)
+            .spawn()
+            .map_err(|e| AppError::internal(format!("Failed to reveal in file manager: {e}")))?;
+    }
+    Ok(())
+}

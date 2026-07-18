@@ -176,6 +176,18 @@ export async function listLocalFolder(path: string): Promise<LocalFileEntry[]> {
   return invoke<LocalFileEntry[]>("list_local_folder", { path });
 }
 
+export async function renameLocalPath(oldPath: string, newName: string): Promise<void> {
+  return invoke<void>("rename_local_path", { oldPath, newName });
+}
+
+export async function deleteLocalPath(path: string): Promise<void> {
+  return invoke<void>("delete_local_path", { path });
+}
+
+export async function revealInFinder(path: string): Promise<void> {
+  return invoke<void>("reveal_in_finder", { path });
+}
+
 // ── Phase 5 — Terminal ────────────────────────────────────────────────────────
 
 export async function openTerminal(

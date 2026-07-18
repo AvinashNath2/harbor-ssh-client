@@ -16,7 +16,7 @@ pub use fs::{
     download_file_queued, get_file_info, list_folder, read_file_preview, rename_path, upload_file,
     upload_file_queued, write_file_text,
 };
-pub use local_fs::{get_local_home, list_local_folder};
+pub use local_fs::{delete_local_path, get_local_home, list_local_folder, rename_local_path, reveal_in_finder};
 pub use ping::ping;
 pub use profiles::{delete_profile, list_profiles, save_profile};
 pub use session_log::{

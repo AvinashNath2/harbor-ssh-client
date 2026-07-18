@@ -5,12 +5,13 @@ mod ssh;
 
 use commands::{
     append_command, cancel_transfer, chmod_file, close_session, close_terminal,
-    compute_folder_size, connect, connection_status, create_folder, create_session, delete_path,
-    delete_profile, delete_session, delete_sessions_before, disconnect, download_file,
+    compute_folder_size, connect, connection_status, create_folder, create_session, delete_local_path,
+    delete_path, delete_profile, delete_session, delete_sessions_before, disconnect, download_file,
     download_file_queued, get_file_info, get_local_home, list_folder, list_local_folder,
     list_profiles, list_sessions, load_session, open_terminal, parse_ssh_config, ping,
-    ping_connection, read_file_preview, reconnect, rename_path, resize_terminal, save_profile,
-    test_connection, upload_file, upload_file_queued, write_file_text, write_terminal,
+    ping_connection, read_file_preview, reconnect, rename_local_path, rename_path, resize_terminal,
+    reveal_in_finder, save_profile, test_connection, upload_file, upload_file_queued,
+    write_file_text, write_terminal,
 };
 use ssh::SshState;
 
@@ -49,6 +50,9 @@ pub fn run() {
             delete_profile,
             get_local_home,
             list_local_folder,
+            rename_local_path,
+            delete_local_path,
+            reveal_in_finder,
             open_terminal,
             write_terminal,
             resize_terminal,
