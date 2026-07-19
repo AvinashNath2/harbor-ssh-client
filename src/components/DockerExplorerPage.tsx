@@ -228,7 +228,7 @@ export function DockerExplorerPage({ onClose }: DockerExplorerPageProps) {
                   <div key={p.name} className="flex items-center gap-2 py-1">
                     <span
                       className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
-                        p.status.toLowerCase().includes("running") ? "bg-success" : "bg-text-faint"
+                        p.status?.toLowerCase().includes("running") ? "bg-success" : "bg-text-faint"
                       }`}
                     />
                     <span className="truncate text-[12px] text-text-primary">{p.name}</span>

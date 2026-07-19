@@ -484,8 +484,8 @@ export interface DockerVolume {
 
 export interface ComposeProject {
   name: string;
-  status: string;
-  config_files: string;
+  status: string | null;
+  config_files: string | null;
 }
 
 export interface ContainerStats {

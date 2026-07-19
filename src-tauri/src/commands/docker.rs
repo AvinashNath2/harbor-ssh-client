@@ -76,12 +76,12 @@ pub struct DockerVolume {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ComposeProject {
-    #[serde(rename = "Name")]
+    #[serde(rename = "Name", default)]
     pub name: String,
-    #[serde(rename = "Status")]
-    pub status: String,
-    #[serde(rename = "ConfigFiles")]
-    pub config_files: String,
+    #[serde(rename = "Status", default)]
+    pub status: Option<String>,
+    #[serde(rename = "ConfigFiles", default)]
+    pub config_files: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
