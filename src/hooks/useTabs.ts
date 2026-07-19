@@ -6,6 +6,7 @@ import { listFolder, type AppError, type FileEntry } from "../api";
 export interface Tab {
   id: string;
   path: string;
+  label: string;
   entries: FileEntry[];
   status: "loading" | "ready" | "error";
   error: string | null;
@@ -20,9 +21,9 @@ export interface Tab {
  *   true  → the caller successfully reconnected; loadDir will retry once.
  *   false → give up; the tab shows an error.
  */
-export function useTabs(homeDir: string, onConnectionLost?: () => Promise<boolean>) {
+export function useTabs(homeDir: string, connectionLabel: string, onConnectionLost?: () => Promise<boolean>) {
   // Stable ref so the initial tab's ID is the same object across renders.
-  const firstTabRef = useRef(makeTab(homeDir));
+  const firstTabRef = useRef(makeTab(homeDir, connectionLabel));
 
   const [tabs, setTabs] = useState<Tab[]>([firstTabRef.current]);
   const [activeId, setActiveId] = useState<string>(firstTabRef.current.id);
@@ -138,12 +139,12 @@ export function useTabs(homeDir: string, onConnectionLost?: () => Promise<boolea
   const openTab = useCallback(
     (path?: string) => {
       const startPath = path ?? activeTab.path;
-      const tab = makeTab(startPath);
+      const tab = makeTab(startPath, connectionLabel);
       setTabs((prev) => [...prev, tab]);
       setActiveId(tab.id);
       void loadDir(tab.id, startPath);
     },
-    [activeTab.path, loadDir],
+    [activeTab.path, connectionLabel, loadDir],
   );
 
   const closeTab = useCallback(
@@ -185,10 +186,11 @@ export function useTabs(homeDir: string, onConnectionLost?: () => Promise<boolea
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeTab(path: string): Tab {
+function makeTab(path: string, label: string): Tab {
   return {
     id: crypto.randomUUID(),
     path,
+    label,
     entries: [],
     status: "loading",
     error: null,

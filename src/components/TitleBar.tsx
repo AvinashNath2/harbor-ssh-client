@@ -46,7 +46,7 @@ export function TitleBar({
           H
         </div>
         <span className="text-[13.5px] font-semibold tracking-[-0.3px] text-text-primary">
-          Harbor
+          HarborSCP
         </span>
       </div>
 
@@ -248,7 +248,7 @@ interface TitleBarTabProps {
 }
 
 function TitleBarTab({ tab, isActive, onActivate, onClose, canClose }: TitleBarTabProps) {
-  const label = tab.path.split("/").filter(Boolean).pop() ?? "/";
+  const label = tab.label;
 
   return (
     <div

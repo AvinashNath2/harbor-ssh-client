@@ -34,7 +34,7 @@ export function SessionLogPage({ onClose }: SessionLogPageProps) {
             className="flex items-center gap-1.5 text-[12.5px] font-medium text-text-secondary transition-colors hover:text-text-primary"
           >
             <ArrowLeft size={14} strokeWidth={2.2} />
-            Harbor
+            HarborSCP
           </button>
         )}
 

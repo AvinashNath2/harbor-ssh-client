@@ -448,7 +448,7 @@ function DisconnectedApp({
             >
               H
             </div>
-            <p className="text-[14px] font-semibold text-text-primary">Harbor</p>
+            <p className="text-[14px] font-semibold text-text-primary">HarborSCP</p>
             <p className="mt-1 text-[12.5px] text-text-secondary">
               Select a saved session or create a new one
             </p>
@@ -541,7 +541,7 @@ function ConnectedApp({
     goForward,
     closeTab,
     reload,
-  } = useTabs(result.homeDir, onConnectionLost);
+  } = useTabs(result.homeDir, activeProfile?.name ?? result.host, onConnectionLost);
 
   // Phase 4 — Local filesystem
   const localFiles = useLocalFiles();

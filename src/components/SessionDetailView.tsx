@@ -160,7 +160,7 @@ export function SessionDetailView({ session }: SessionDetailViewProps) {
   function handleExport() {
     // Build export as an array of Blob parts to avoid concatenating one giant string.
     const parts: string[] = [
-      `Harbor Session Log\n`,
+      `HarborSCP Session Log\n`,
       `Session: ${session.username}@${session.host} (${session.ip})\n`,
       `Started:  ${new Date(session.startedAt).toISOString()}\n`,
       `Ended:    ${session.endedAt ? new Date(session.endedAt).toISOString() : "Active"}\n`,
