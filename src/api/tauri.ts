@@ -369,6 +369,36 @@ export async function deleteSessionsBefore(beforeMs: number): Promise<void> {
   await invoke("delete_sessions_before", { beforeMs });
 }
 
+// ── Port forwarding ───────────────────────────────────────────────────────────
+
+export interface PortForward {
+  id: string;
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+}
+
+export async function startPortForward(
+  id: string,
+  localPort: number,
+  remoteHost: string,
+  remotePort: number,
+): Promise<void> {
+  await invoke("start_port_forward", { id, localPort, remoteHost, remotePort });
+}
+
+export async function stopPortForward(id: string): Promise<void> {
+  await invoke("stop_port_forward", { id });
+}
+
+export async function listPortForwards(): Promise<PortForward[]> {
+  return invoke<PortForward[]>("list_port_forwards");
+}
+
+export async function stopAllPortForwards(): Promise<void> {
+  await invoke("stop_all_port_forwards");
+}
+
 // ── SSH config import ─────────────────────────────────────────────────────────
 
 export interface SshConfigHost {

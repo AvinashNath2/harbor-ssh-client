@@ -1,7 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { reconnect as reconnectApi, type ConnectArgs, type ConnectResult, type ConnectionProfile, type FileEntry } from "./api";
+import { reconnect as reconnectApi, stopAllPortForwards, type ConnectArgs, type ConnectResult, type ConnectionProfile, type FileEntry } from "./api";
+import { PortForwardPanel } from "./components/PortForwardPanel";
 import { PreviewModal } from "./components/PreviewModal";
 import { SessionLogPage } from "./components/SessionLogPage";
 import { CommandPalette } from "./components/CommandPalette";
@@ -21,12 +22,13 @@ import { TextPromptDialog } from "./components/TextPromptDialog";
 import { TitleBar } from "./components/TitleBar";
 import { Toolbar } from "./components/Toolbar";
 import { TransferPanel } from "./components/TransferPanel";
-import { useSessionLog } from "./hooks/useSessionLog";
+import { useSessionLog, type PendingCommand } from "./hooks/useSessionLog";
 import { useConnection } from "./hooks/useConnection";
 import { useConnectionWatchdog } from "./hooks/useConnectionWatchdog";
 import { useFileOps } from "./hooks/useFileOps";
 import { useLocalFiles } from "./hooks/useLocalFiles";
 import { useNotifications } from "./hooks/useNotifications";
+import { usePortForwards } from "./hooks/usePortForwards";
 import { useProfiles } from "./hooks/useProfiles";
 import { useResizable } from "./hooks/useResizable";
 import { useTabs } from "./hooks/useTabs";
@@ -488,6 +490,10 @@ function ConnectedApp({
   const [showTerminal, setShowTerminal] = useState(true);
   const [terminalEverShown, setTerminalEverShown] = useState(true);
 
+  // Port forwarding
+  const portForwards = usePortForwards();
+  const [showTunnels, setShowTunnels] = useState(false);
+
   // Phase 6 — Transfer queue
   const queue = useTransferQueue();
 
@@ -571,7 +577,22 @@ function ConnectedApp({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string[]>([]);
 
-  const fileOps = useFileOps(activeTab.path, reload, queue, () => undefined);
+  function logFileOp(action: string, details: string) {
+    const cmd: PendingCommand = {
+      executedAt: Date.now(),
+      cwd: activeTab.path,
+      raw: `[${action}] ${details}`,
+      exitCode: action.includes("failed") ? 1 : 0,
+      durationMs: null,
+      output: null,
+      outputTruncated: false,
+      originalOutputBytes: 0,
+      source: "file_browser",
+    };
+    logCommand(cmd);
+  }
+
+  const fileOps = useFileOps(activeTab.path, reload, queue, logFileOp);
 
   const [showNewSession, setShowNewSession] = useState(false);
   const [newSessionPrefill, setNewSessionPrefill] = useState<ConnectionProfile | null>(null);
@@ -619,6 +640,7 @@ function ConnectedApp({
       const name = lp.split(/[/\\]/).pop() ?? "file";
       const remotePath = activeTab.path.replace(/\/$/, "") + "/" + name;
       queue.enqueueUpload(lp, remotePath, name);
+      logFileOp("upload queued", `${lp} → ${remotePath}`);
     }
   }
 
@@ -630,6 +652,7 @@ function ConnectedApp({
       const name = rp.split("/").pop() ?? "file";
       const localPath = localDir.replace(/\/$/, "") + "/" + name;
       queue.enqueueDownload(rp, localPath, name);
+      logFileOp("download queued", `${rp} → ${localPath}`);
     }
   }
 
@@ -689,16 +712,18 @@ function ConnectedApp({
         onDelete={() => {
           requestDelete([...selected]);
         }}
-        onDisconnect={onDisconnect}
+        onDisconnect={() => { void stopAllPortForwards(); onDisconnect(); }}
         onToggleDualPane={() => {
           setDualPane((v) => !v);
         }}
+        onToggleTunnels={() => { setShowTunnels((v) => !v); }}
         onToggleTerminal={() => {
           setShowTerminal((v) => {
             if (!v) setTerminalEverShown(true);
             return !v;
           });
         }}
+        showTunnels={showTunnels}
         onShowLog={onShowLog}
       />
 
@@ -754,6 +779,7 @@ function ConnectedApp({
                     onReload={localFiles.reload}
                     onTransferToRemote={handleTransferToRemote}
                     onReceiveRemoteDrop={handleTransferToLocal}
+                    homeDir={localFiles.homeDir}
                   />
                 </div>
 
@@ -796,6 +822,7 @@ function ConnectedApp({
                   setEditPermsForPath(path);
                 }}
                 onShowPreview={(entry) => { setPreviewEntry(entry); }}
+                homeDir={result.homeDir}
               />
               {detailPanelPath !== null && (() => {
                 const entry = activeTab.entries.find((e) => e.path === detailPanelPath);
@@ -817,6 +844,19 @@ function ConnectedApp({
               })()}
             </div>
           </div>
+
+          {/* Tunnels panel — sits above the terminal area, full width */}
+          {showTunnels && (
+            <div className="flex-none border-t border-border-raised" style={{ height: 220 }}>
+              <PortForwardPanel
+                tunnels={portForwards.tunnels}
+                tunnelError={portForwards.tunnelError}
+                onAdd={(lp, rh, rp) => { void portForwards.addTunnel(lp, rh, rp); }}
+                onRemove={(id) => { void portForwards.removeTunnel(id); }}
+                onClearError={portForwards.clearTunnelError}
+              />
+            </div>
+          )}
 
           {/* Bottom panels — visible when terminal is shown or there are transfers */}
           {(showTerminal || queue.transfers.length > 0) && (

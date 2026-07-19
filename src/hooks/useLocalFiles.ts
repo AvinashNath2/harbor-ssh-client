@@ -24,6 +24,7 @@ export function useLocalFiles() {
   // capturing stale closures and without needing tab as a dependency.
   const tabRef = useRef(tab);
   tabRef.current = tab;
+  const [homeDir, setHomeDir] = useState<string>("");
 
   const loadPath = useCallback(async (path: string, pushHistory = true) => {
     setTab((prev) => ({
@@ -52,6 +53,7 @@ export function useLocalFiles() {
     void (async () => {
       try {
         const home = await getLocalHome();
+        setHomeDir(home);
         await loadPath(home, false);
         setTab((prev) => ({
           ...prev,
@@ -100,7 +102,7 @@ export function useLocalFiles() {
   const canGoBack = tab.historyIndex > 0;
   const canGoForward = tab.historyIndex < tab.history.length - 1;
 
-  return { tab, navigateTo, goBack, goForward, reload, canGoBack, canGoForward };
+  return { tab, navigateTo, goBack, goForward, reload, canGoBack, canGoForward, homeDir };
 }
 
 function extractMsg(e: unknown): string {

@@ -62,6 +62,17 @@ impl Db {
         if has_source == 0 {
             conn.execute_batch("ALTER TABLE commands ADD COLUMN source TEXT;")?;
         }
+
+        // Close orphaned sessions from previous runs (app was killed/crashed before cleanup ran).
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        conn.execute(
+            "UPDATE sessions SET ended_at = ?1 WHERE ended_at IS NULL",
+            rusqlite::params![now_ms],
+        )?;
+
         Ok(Self { conn: Mutex::new(conn) })
     }
 }

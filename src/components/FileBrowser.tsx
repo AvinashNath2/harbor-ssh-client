@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { computeFolderSize, type FileEntry } from "../api";
+import { computeFolderSize, listFolder, type FileEntry } from "../api";
 import { useElementWidth } from "../hooks/useElementWidth";
 import type { Tab } from "../hooks/useTabs";
 import { fileIcon, fileTypeLabel } from "../utils/fileType";
@@ -45,6 +45,7 @@ interface FileBrowserProps {
   onOpenDetail?: (path: string) => void;
   /** User picked "Edit permissions" — open detail panel on Permissions tab in edit mode. */
   onEditPermissions?: (path: string) => void;
+  homeDir: string;
   /** User picked "Show content" — open the file preview modal directly. */
   onShowPreview?: (entry: FileEntry) => void;
 }
@@ -66,6 +67,7 @@ export function FileBrowser({
   onDelete,
   onDownload,
   onReceiveLocalDrop,
+  homeDir,
   onOpenDetail,
   onEditPermissions,
   onShowPreview,
@@ -85,6 +87,14 @@ export function FileBrowser({
   const [sortCol, setSortCol] = useState<SortColumn>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
+  const pathInputRef = useRef<HTMLInputElement>(null);
+  const lastClickedIndexRef = useRef<number>(-1);
+  const [pathValid, setPathValid] = useState<boolean | null>(null);
+  const pathValidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [acItems, setAcItems] = useState<string[]>([]);
+  const [acIndex, setAcIndex] = useState(-1);
+  const acTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // On-demand computed folder sizes. Keyed by full remote path.
   const [folderSizes, setFolderSizes] = useState<Record<string, number>>({});
   const [loadingFolderSizes, setLoadingFolderSizes] = useState<Set<string>>(new Set());
@@ -97,6 +107,63 @@ export function FileBrowser({
     setLoadingFolderSizes(new Set());
     inflightSizes.current.clear();
   }, [tab.path]);
+
+  // ⌘L / ⌘G focuses the path bar.
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "l" || e.key === "g")) {
+        e.preventDefault();
+        setPathInput(tab.path);
+        setEditingPath(true);
+      }
+    }
+    window.addEventListener("keydown", handler);
+    return () => { window.removeEventListener("keydown", handler); };
+  }, [tab.path]);
+
+  // Auto-focus path input when editing mode activates.
+  useEffect(() => {
+    if (editingPath) pathInputRef.current?.focus();
+  }, [editingPath]);
+
+  // Path validation — 400ms debounce.
+  useEffect(() => {
+    if (!editingPath) { setPathValid(null); return; }
+    const raw = pathInput.trim();
+    if (!raw) { setPathValid(null); return; }
+    if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current);
+    pathValidTimerRef.current = setTimeout(() => {
+      const lastSlash = raw.lastIndexOf("/");
+      const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
+      const base = raw.endsWith("/") ? "" : raw.slice(lastSlash + 1);
+      const checkDir = raw.endsWith("/") ? raw.replace(/\/$/, "") || "/" : dir;
+      void listFolder(checkDir).then((entries) => {
+        setPathValid(!base || entries.some((en) => en.name === base));
+      }).catch(() => { setPathValid(false); });
+    }, 400);
+    return () => { if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current); };
+  }, [pathInput, editingPath]);
+
+  // Autocomplete — 200ms debounce.
+  useEffect(() => {
+    if (!editingPath) { setAcItems([]); setAcIndex(-1); return; }
+    const raw = pathInput.trim();
+    if (!raw) { setAcItems([]); return; }
+    if (acTimerRef.current) clearTimeout(acTimerRef.current);
+    acTimerRef.current = setTimeout(() => {
+      const lastSlash = raw.lastIndexOf("/");
+      const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
+      const prefix = raw.slice(lastSlash + 1).toLowerCase();
+      void listFolder(dir).then((entries) => {
+        const matches = entries
+          .filter((en) => en.kind === "directory" && en.name.toLowerCase().startsWith(prefix))
+          .map((en) => (dir === "/" ? "/" + en.name : dir + "/" + en.name));
+        setAcItems(matches.slice(0, 12));
+        setAcIndex(-1);
+      }).catch(() => { setAcItems([]); });
+    }, 200);
+    return () => { if (acTimerRef.current) clearTimeout(acTimerRef.current); };
+  }, [pathInput, editingPath]);
 
   function requestFolderSize(path: string) {
     // Record indexing is typed as always-defined without noUncheckedIndexedAccess,
@@ -163,12 +230,20 @@ export function FileBrowser({
     e.preventDefault();
     if (pathInput.trim()) {
       onNavigate(pathInput.trim());
+      setPathValid(null);
+      setAcItems([]);
       setEditingPath(false);
       setPathInput("");
     }
   }
 
-  function handleRowClick(e: React.MouseEvent, entry: FileEntry) {
+  function handleRowClick(e: React.MouseEvent, entry: FileEntry, idx: number) {
+    if (e.shiftKey && lastClickedIndexRef.current >= 0) {
+      const lo = Math.min(idx, lastClickedIndexRef.current);
+      const hi = Math.max(idx, lastClickedIndexRef.current);
+      onSelectionChange(new Set(visibleEntries.slice(lo, hi + 1).map((en) => en.path)));
+      return;
+    }
     const meta = e.metaKey || e.ctrlKey;
     if (meta) {
       const next = new Set(selected);
@@ -181,6 +256,7 @@ export function FileBrowser({
     } else {
       onSelectionChange(new Set([entry.path]));
     }
+    lastClickedIndexRef.current = idx;
   }
 
   function handleRowDoubleClick(entry: FileEntry) {
@@ -315,7 +391,9 @@ export function FileBrowser({
   // Drag-and-drop: accept local paths dropped here → upload to current dir.
   const [isDropTarget, setIsDropTarget] = useState(false);
   function handleDragOver(e: React.DragEvent) {
-    if (e.dataTransfer.types.includes(HARBOR_LOCAL_MIME)) {
+    const hasLocal = e.dataTransfer.types.includes(HARBOR_LOCAL_MIME);
+    const hasOsFiles = e.dataTransfer.types.includes("Files");
+    if (hasLocal || hasOsFiles) {
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
       setIsDropTarget(true);
@@ -327,12 +405,23 @@ export function FileBrowser({
   function handleDrop(e: React.DragEvent) {
     setIsDropTarget(false);
     const raw = e.dataTransfer.getData(HARBOR_LOCAL_MIME);
-    if (!raw) return;
-    e.preventDefault();
-    try {
-      const paths: unknown = JSON.parse(raw);
-      if (Array.isArray(paths)) onReceiveLocalDrop(paths.filter((p): p is string => typeof p === "string"));
-    } catch { /* ignore */ }
+    if (raw) {
+      e.preventDefault();
+      try {
+        const paths: unknown = JSON.parse(raw);
+        if (Array.isArray(paths)) onReceiveLocalDrop(paths.filter((p): p is string => typeof p === "string"));
+      } catch { /* ignore */ }
+      return;
+    }
+    if (e.dataTransfer.files.length > 0) {
+      e.preventDefault();
+      const localPaths: string[] = [];
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const file = e.dataTransfer.files[i] as File & { path?: string };
+        if (file.path) localPaths.push(file.path);
+      }
+      if (localPaths.length > 0) onReceiveLocalDrop(localPaths);
+    }
   }
 
   return (
@@ -354,22 +443,37 @@ export function FileBrowser({
         </span>
 
         {editingPath ? (
-          <form onSubmit={handlePathSubmit} className="flex flex-1 items-center gap-2">
+          <form onSubmit={handlePathSubmit} className="relative flex flex-1 items-center gap-2">
             <input
+              ref={pathInputRef}
               autoFocus
               type="text"
               value={pathInput}
-              onChange={(e) => {
-                setPathInput(e.target.value);
-              }}
-              onBlur={() => {
-                setEditingPath(false);
-              }}
+              onChange={(e) => { setPathInput(e.target.value); }}
+              onBlur={() => { setTimeout(() => { setEditingPath(false); setAcItems([]); setPathValid(null); }, 120); }}
               onKeyDown={(e) => {
-                if (e.key === "Escape") setEditingPath(false);
+                if (e.key === "Escape") { setEditingPath(false); setAcItems([]); return; }
+                if (acItems.length > 0) {
+                  if (e.key === "ArrowDown") { e.preventDefault(); setAcIndex((i) => Math.min(i + 1, acItems.length - 1)); return; }
+                  if (e.key === "ArrowUp") { e.preventDefault(); setAcIndex((i) => Math.max(i - 1, -1)); return; }
+                  if (e.key === "Tab" || (e.key === "Enter" && acIndex >= 0)) {
+                    e.preventDefault();
+                    const chosen = acItems[acIndex >= 0 ? acIndex : 0];
+                    if (chosen) { setPathInput(chosen + "/"); setAcIndex(-1); }
+                    return;
+                  }
+                }
               }}
               placeholder={tab.path}
-              className="flex-1 bg-transparent font-mono text-[12px] text-text-primary outline-none"
+              className={`flex-1 bg-transparent font-mono text-[12px] text-text-primary outline-none ${
+                pathValid === false ? "rounded border border-danger px-1" : ""
+              }`}
+              title={pathValid === false ? "Path does not exist" : undefined}
+            />
+            <PathAutocomplete
+              items={acItems}
+              activeIndex={acIndex}
+              onSelect={(p) => { setPathInput(p); setAcItems([]); setAcIndex(-1); pathInputRef.current?.focus(); }}
             />
           </form>
         ) : (
@@ -380,10 +484,17 @@ export function FileBrowser({
               onNavigate(p);
             }}
             onEdit={() => {
+              setPathInput(tab.path);
               setEditingPath(true);
             }}
           />
         )}
+
+        <button
+          onClick={() => { onSelectionChange(new Set()); onNavigate(homeDir); }}
+          title="Go to home directory"
+          className="flex-shrink-0 rounded-[5px] px-[6px] py-[2px] font-mono text-[10px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
+        >~</button>
 
         <div className="flex-1" />
 
@@ -580,8 +691,8 @@ function Breadcrumb({
   return (
     <div
       onClick={onEdit}
-      title="Click to type a path"
-      className="flex min-w-0 flex-1 cursor-text items-center gap-[5px] font-mono text-[12px]"
+      title="Click to type a path  (⌘L or ⌘G)"
+      className="group flex min-w-0 flex-1 cursor-text items-center gap-[5px] font-mono text-[12px]"
     >
       <button
         onClick={(e) => {
@@ -612,6 +723,11 @@ function Breadcrumb({
           </span>
         );
       })}
+      <Pencil
+        size={10}
+        strokeWidth={2}
+        className="ml-1 flex-shrink-0 text-text-faint opacity-0 transition-opacity group-hover:opacity-100"
+      />
     </div>
   );
 }
@@ -655,17 +771,18 @@ function FileList({
   gridCols: string;
   folderSizes: Record<string, number>;
   loadingFolderSizes: Set<string>;
-  onRowClick: (e: React.MouseEvent, entry: FileEntry) => void;
+  onRowClick: (e: React.MouseEvent, entry: FileEntry, idx: number) => void;
   onRowDoubleClick: (entry: FileEntry) => void;
   onRowContextMenu: (e: React.MouseEvent, entry: FileEntry) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
 }) {
   return (
     <div>
-      {entries.map((entry) => (
+      {entries.map((entry, idx) => (
         <FileRow
           key={entry.path}
           entry={entry}
+          idx={idx}
           isSelected={selected.has(entry.path)}
           isRenaming={renamingPath === entry.path}
           compact={compact}
@@ -689,6 +806,7 @@ function FileList({
 
 function FileRow({
   entry,
+  idx,
   isSelected,
   isRenaming,
   compact,
@@ -702,13 +820,14 @@ function FileRow({
   onDragStart,
 }: {
   entry: FileEntry;
+  idx: number;
   isSelected: boolean;
   isRenaming: boolean;
   compact: boolean;
   gridCols: string;
   folderSize?: number;
   folderSizeLoading?: boolean;
-  onClick: (e: React.MouseEvent, entry: FileEntry) => void;
+  onClick: (e: React.MouseEvent, entry: FileEntry, idx: number) => void;
   onDoubleClick: (entry: FileEntry) => void;
   onContextMenu: (e: React.MouseEvent, entry: FileEntry) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
@@ -727,7 +846,7 @@ function FileRow({
       onDragStart={onDragStart}
       onClick={(e) => {
         e.stopPropagation();
-        onClick(e, entry);
+        onClick(e, entry, idx);
       }}
       onDoubleClick={() => {
         onDoubleClick(entry);
@@ -868,4 +987,38 @@ function formatDate(ts: number | null): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+// ── Path autocomplete dropdown ────────────────────────────────────────────────
+
+function PathAutocomplete({
+  items,
+  activeIndex,
+  onSelect,
+}: {
+  items: string[];
+  activeIndex: number;
+  onSelect: (p: string) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div
+      className="absolute left-0 top-full z-50 mt-0.5 max-h-[240px] w-full overflow-auto rounded-[10px] border border-border-raised bg-surface-pane py-1 shadow-[0_4px_24px_rgba(0,0,0,0.14)]"
+      onMouseDown={(e) => { e.preventDefault(); }}
+    >
+      {items.map((item, i) => (
+        <button
+          key={item}
+          onMouseDown={() => { onSelect(item + "/"); }}
+          className={`block w-full truncate px-3 py-[5px] text-left font-mono text-[12px] transition-colors ${
+            i === activeIndex
+              ? "bg-accent/[0.09] text-text-primary"
+              : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+          }`}
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  );
 }

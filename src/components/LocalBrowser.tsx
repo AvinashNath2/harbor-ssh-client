@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { deleteLocalPath, renameLocalPath, revealInFinder, type LocalFileEntry } from "../api";
+import { deleteLocalPath, listLocalFolder, renameLocalPath, revealInFinder, type LocalFileEntry } from "../api";
 import { useElementWidth } from "../hooks/useElementWidth";
 import type { LocalTab } from "../hooks/useLocalFiles";
 import { fileIcon, fileTypeLabel } from "../utils/fileType";
@@ -47,6 +47,7 @@ interface LocalBrowserProps {
   onReload: () => void;
   onTransferToRemote: (paths: string[]) => void;
   onReceiveRemoteDrop: (remotePaths: string[]) => void;
+  homeDir: string;
 }
 
 export function LocalBrowser({
@@ -61,6 +62,7 @@ export function LocalBrowser({
   onReload,
   onTransferToRemote,
   onReceiveRemoteDrop,
+  homeDir,
 }: LocalBrowserProps) {
   const [containerRef, containerWidth] = useElementWidth();
   const compact = containerWidth > 0 && containerWidth < COMPACT_THRESHOLD;
@@ -88,16 +90,22 @@ export function LocalBrowser({
   // Last clicked index for shift-click range selection.
   const lastClickedIndexRef = useRef<number>(-1);
 
+  const [pathValid, setPathValid] = useState<boolean | null>(null);
+  const pathValidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [acItems, setAcItems] = useState<string[]>([]);
+  const [acIndex, setAcIndex] = useState(-1);
+  const acTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Reset search when navigating.
   useEffect(() => {
     setSearch("");
     setRenameError(null);
   }, [tab.path]);
 
-  // ⌘L focuses the path bar.
+  // ⌘L / ⌘G focuses the path bar.
   useEffect(() => {
     function handler(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "l") {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "l" || e.key === "g")) {
         e.preventDefault();
         setPathInput(tab.path);
         setEditingPath(true);
@@ -112,10 +120,51 @@ export function LocalBrowser({
     if (editingPath) pathInputRef.current?.focus();
   }, [editingPath]);
 
+  // Path validation — 400ms debounce.
+  useEffect(() => {
+    if (!editingPath) { setPathValid(null); return; }
+    const raw = pathInput.trim();
+    if (!raw) { setPathValid(null); return; }
+    if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current);
+    pathValidTimerRef.current = setTimeout(() => {
+      const lastSlash = raw.lastIndexOf("/");
+      const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
+      const base = raw.endsWith("/") ? "" : raw.slice(lastSlash + 1);
+      const checkDir = raw.endsWith("/") ? raw.replace(/\/$/, "") || "/" : dir;
+      void listLocalFolder(checkDir).then((entries) => {
+        setPathValid(!base || entries.some((en) => en.name === base));
+      }).catch(() => { setPathValid(false); });
+    }, 400);
+    return () => { if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current); };
+  }, [pathInput, editingPath]);
+
+  // Autocomplete — 200ms debounce.
+  useEffect(() => {
+    if (!editingPath) { setAcItems([]); setAcIndex(-1); return; }
+    const raw = pathInput.trim();
+    if (!raw) { setAcItems([]); return; }
+    if (acTimerRef.current) clearTimeout(acTimerRef.current);
+    acTimerRef.current = setTimeout(() => {
+      const lastSlash = raw.lastIndexOf("/");
+      const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
+      const prefix = raw.slice(lastSlash + 1).toLowerCase();
+      void listLocalFolder(dir).then((entries) => {
+        const matches = entries
+          .filter((en) => en.kind === "directory" && en.name.toLowerCase().startsWith(prefix))
+          .map((en) => (dir === "/" ? "/" + en.name : dir + "/" + en.name));
+        setAcItems(matches.slice(0, 12));
+        setAcIndex(-1);
+      }).catch(() => { setAcItems([]); });
+    }, 200);
+    return () => { if (acTimerRef.current) clearTimeout(acTimerRef.current); };
+  }, [pathInput, editingPath]);
+
   function commitPath(e: React.SyntheticEvent) {
     e.preventDefault();
     const p = pathInput.trim();
     if (p) onNavigate(p);
+    setPathValid(null);
+    setAcItems([]);
     setEditingPath(false);
     setPathInput("");
   }
@@ -323,18 +372,38 @@ export function LocalBrowser({
 
         {/* Path bar — click anywhere to edit (matches remote behaviour) */}
         {editingPath ? (
-          <form onSubmit={commitPath} className="flex flex-1 items-center gap-2">
+          <form onSubmit={commitPath} className="relative flex flex-1 items-center gap-2">
             <input
               ref={pathInputRef}
               type="text"
               value={pathInput}
               onChange={(e) => { setPathInput(e.target.value); }}
-              onBlur={() => { setEditingPath(false); }}
-              onKeyDown={(e) => { if (e.key === "Escape") setEditingPath(false); }}
+              onBlur={() => { setTimeout(() => { setEditingPath(false); setAcItems([]); setPathValid(null); }, 120); }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { setEditingPath(false); setAcItems([]); return; }
+                if (acItems.length > 0) {
+                  if (e.key === "ArrowDown") { e.preventDefault(); setAcIndex((i) => Math.min(i + 1, acItems.length - 1)); return; }
+                  if (e.key === "ArrowUp") { e.preventDefault(); setAcIndex((i) => Math.max(i - 1, -1)); return; }
+                  if (e.key === "Tab" || (e.key === "Enter" && acIndex >= 0)) {
+                    e.preventDefault();
+                    const chosen = acItems[acIndex >= 0 ? acIndex : 0];
+                    if (chosen) { setPathInput(chosen + "/"); setAcIndex(-1); }
+                    return;
+                  }
+                }
+              }}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              className="flex-1 bg-transparent font-mono text-[12px] text-text-primary outline-none"
+              className={`flex-1 bg-transparent font-mono text-[12px] text-text-primary outline-none ${
+                pathValid === false ? "rounded border border-danger px-1" : ""
+              }`}
+              title={pathValid === false ? "Path does not exist" : undefined}
+            />
+            <PathAutocomplete
+              items={acItems}
+              activeIndex={acIndex}
+              onSelect={(p) => { setPathInput(p); setAcItems([]); setAcIndex(-1); pathInputRef.current?.focus(); }}
             />
           </form>
         ) : (
@@ -344,6 +413,12 @@ export function LocalBrowser({
             onEdit={() => { setPathInput(tab.path); setEditingPath(true); }}
           />
         )}
+
+        <button
+          onClick={() => { onSelectionChange(new Set()); onNavigate(homeDir); }}
+          title="Go to home directory"
+          className="flex-shrink-0 rounded-[5px] px-[6px] py-[2px] font-mono text-[10px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
+        >~</button>
 
         <div className="flex-1" />
 
@@ -548,7 +623,7 @@ function LocalBreadcrumb({
   return (
     <div
       onClick={onEdit}
-      title="Click to type a path  (⌘L)"
+      title="Click to type a path  (⌘L or ⌘G)"
       className="group flex min-w-0 flex-1 cursor-text items-center gap-[5px] font-mono text-[12px]"
     >
       <button
@@ -729,4 +804,38 @@ function formatDate(ts: number | null): string {
   return new Date(ts * 1000).toLocaleDateString(undefined, {
     month: "short", day: "numeric", year: "numeric",
   });
+}
+
+// ── Path autocomplete dropdown ────────────────────────────────────────────────
+
+function PathAutocomplete({
+  items,
+  activeIndex,
+  onSelect,
+}: {
+  items: string[];
+  activeIndex: number;
+  onSelect: (p: string) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div
+      className="absolute left-0 top-full z-50 mt-0.5 max-h-[240px] w-full overflow-auto rounded-[10px] border border-border-raised bg-surface-pane py-1 shadow-[0_4px_24px_rgba(0,0,0,0.14)]"
+      onMouseDown={(e) => { e.preventDefault(); }}
+    >
+      {items.map((item, i) => (
+        <button
+          key={item}
+          onMouseDown={() => { onSelect(item + "/"); }}
+          className={`block w-full truncate px-3 py-[5px] text-left font-mono text-[12px] transition-colors ${
+            i === activeIndex
+              ? "bg-accent/[0.09] text-text-primary"
+              : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+          }`}
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  );
 }

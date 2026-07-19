@@ -128,8 +128,27 @@ pub async fn open_terminal(
             std::thread::sleep(std::time::Duration::from_millis(80));
         }
 
-        // Switch to non-blocking so the read loop can interleave with writes.
+        // Switch to non-blocking so we can drain setup artifacts first.
         bundle.session.set_blocking(false);
+
+        // Drain and discard all PTY output buffered during setup. The 'stty -echo'
+        // command is itself echoed by the PTY (because echo was still on when it was
+        // sent), so without this drain it would appear verbatim in the terminal.
+        {
+            use std::io::Read as _;
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            let mut drain = [0u8; 8192];
+            loop {
+                match channel.read(&mut drain) {
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {}
+                }
+            }
+            // Trigger a fresh shell prompt so the user starts with a clean terminal.
+            let _ = channel.write_all(b"\n");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
 
         // ── Read/write loop ────────────────────────────────────────────────────
         let mut read_buf = [0u8; 4096];

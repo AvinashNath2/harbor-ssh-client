@@ -3,6 +3,7 @@ pub mod disconnect;
 pub mod fs;
 pub mod local_fs;
 pub mod ping;
+pub mod port_forward;
 pub mod profiles;
 pub mod session_log;
 pub mod ssh_config;
@@ -18,6 +19,7 @@ pub use fs::{
 };
 pub use local_fs::{delete_local_path, get_local_home, list_local_folder, rename_local_path, reveal_in_finder};
 pub use ping::ping;
+pub use port_forward::{list_port_forwards, start_port_forward, stop_all_port_forwards, stop_port_forward};
 pub use profiles::{delete_profile, list_profiles, save_profile};
 pub use session_log::{
     append_command, close_session, create_session, delete_session, delete_sessions_before,

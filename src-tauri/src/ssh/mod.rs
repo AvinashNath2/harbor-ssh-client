@@ -23,6 +23,15 @@ pub struct TerminalHandle {
     pub tx: std::sync::mpsc::SyncSender<TerminalCmd>,
 }
 
+// ── Port forward types ────────────────────────────────────────────────────────
+
+pub struct PortForwardHandle {
+    pub local_port: u16,
+    pub remote_host: String,
+    pub remote_port: u16,
+    pub stop_tx: std::sync::mpsc::Sender<()>,
+}
+
 // ── Session bundle ────────────────────────────────────────────────────────────
 
 pub struct SessionBundle {
@@ -567,6 +576,8 @@ pub struct SshState {
     pub terminals: Arc<Mutex<HashMap<String, TerminalHandle>>>,
     /// Transfer IDs that have been cancelled by the user.
     pub cancelled_transfers: Arc<Mutex<HashSet<String>>>,
+    /// Active port forward listeners indexed by forward_id.
+    pub port_forwards: Arc<Mutex<HashMap<String, PortForwardHandle>>>,
 }
 
 impl SshState {
@@ -576,6 +587,7 @@ impl SshState {
             creds: Arc::new(Mutex::new(None)),
             terminals: Arc::new(Mutex::new(HashMap::new())),
             cancelled_transfers: Arc::new(Mutex::new(HashSet::new())),
+            port_forwards: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

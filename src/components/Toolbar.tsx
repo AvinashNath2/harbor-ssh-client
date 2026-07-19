@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  ArrowLeftRight,
   ArrowRight,
   FilePlus2,
   FolderPlus,
@@ -20,6 +21,7 @@ interface ToolbarProps {
   busy: boolean;
   dualPane: boolean;
   showTerminal: boolean;
+  showTunnels: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
   onGoBack: () => void;
@@ -33,6 +35,7 @@ interface ToolbarProps {
   onDisconnect: () => void;
   onToggleDualPane: () => void;
   onToggleTerminal: () => void;
+  onToggleTunnels: () => void;
   onShowLog: () => void;
 }
 
@@ -45,6 +48,7 @@ export function Toolbar({
   busy,
   dualPane,
   showTerminal,
+  showTunnels,
   canGoBack,
   canGoForward,
   onGoBack,
@@ -58,6 +62,7 @@ export function Toolbar({
   onDisconnect,
   onToggleDualPane,
   onToggleTerminal,
+  onToggleTunnels,
   onShowLog,
 }: ToolbarProps) {
   const hasSelection = selected.size > 0;
@@ -149,6 +154,13 @@ export function Toolbar({
           onClick={onToggleDualPane}
         >
           <SplitSquareHorizontal size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+        </ToggleBtn>
+        <ToggleBtn
+          title={showTunnels ? "Hide tunnels" : "SSH tunnels / port forwarding"}
+          active={showTunnels}
+          onClick={onToggleTunnels}
+        >
+          <ArrowLeftRight size={ICON_SIZE} strokeWidth={ICON_STROKE} />
         </ToggleBtn>
         <ToggleBtn
           title={showTerminal ? "Hide terminal" : "Show terminal"}
