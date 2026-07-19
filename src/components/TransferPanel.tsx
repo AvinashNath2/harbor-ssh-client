@@ -24,9 +24,9 @@ export function TransferPanel({
   return (
     <div className="flex min-h-0 flex-col border-t border-border-raised bg-surface-pane">
       {/* Header */}
-      <div className="flex h-9 flex-none items-center justify-between border-b border-border-raised bg-surface-toolbar px-3.5">
+      <div className="flex h-8 flex-none items-center justify-between border-b border-border-raised bg-surface-toolbar px-3.5">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.5px] text-text-tertiary">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.6px] text-text-tertiary">
             Transfers
           </span>
           {active.length > 0 && (
@@ -100,7 +100,7 @@ function TransferRow({
             : "Queued";
 
   return (
-    <div className="border-b border-border-subtle px-3.5 py-2">
+    <div className="border-b border-border-subtle px-4 py-[9px]">
       <div className="mb-1 flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="flex-shrink-0 text-text-faint">

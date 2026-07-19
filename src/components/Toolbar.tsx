@@ -39,8 +39,8 @@ interface ToolbarProps {
   onShowLog: () => void;
 }
 
-const ICON_SIZE = 15;
-const ICON_STROKE = 1.9;
+const ICON_SIZE = 16;
+const ICON_STROKE = 2;
 
 export function Toolbar({
   result,
@@ -68,26 +68,26 @@ export function Toolbar({
   const hasSelection = selected.size > 0;
 
   return (
-    <div className="flex h-11 flex-none items-center gap-2.5 border-b border-border-raised bg-surface-toolbar px-3.5">
+    <div className="flex h-10 flex-none items-center gap-1 border-b border-border-raised bg-surface-toolbar px-3">
       {/* Connection status chip */}
       <div
-        className="flex items-center gap-2 rounded-[8px] px-[11px] py-[5px]"
+        className="flex items-center gap-1.5 rounded-[8px] px-[10px] py-[4px]"
         style={{
-          background: "rgba(31,157,99,0.10)",
-          border: "1px solid rgba(31,157,99,0.28)",
+          background: "rgba(31,157,99,0.09)",
+          border: "1px solid rgba(31,157,99,0.24)",
         }}
       >
-        <span className="h-[7px] w-[7px] flex-shrink-0 rounded-full bg-success" />
+        <span className="h-[6px] w-[6px] flex-shrink-0 rounded-full bg-success" />
         <span className="font-mono text-[11.5px] text-[#177a4c]">
           {result.username}@{result.host}
         </span>
       </div>
 
       {/* Divider */}
-      <div className="h-5 w-px bg-border-raised" />
+      <div className="mx-1 h-4 w-px bg-border" />
 
       {/* Nav buttons */}
-      <div className="flex gap-0.5">
+      <div className="flex gap-1">
         <ToolBtn title="Go back" onClick={onGoBack} disabled={!canGoBack}>
           <ArrowLeft size={ICON_SIZE} strokeWidth={ICON_STROKE} />
         </ToolBtn>
@@ -97,10 +97,10 @@ export function Toolbar({
       </div>
 
       {/* Divider */}
-      <div className="h-5 w-px bg-border-raised" />
+      <div className="mx-1 h-4 w-px bg-border" />
 
       {/* Action buttons */}
-      <div className="flex gap-0.5">
+      <div className="flex gap-1">
         <ToolBtn title="Reload" onClick={onReload} disabled={busy}>
           <RefreshCw size={ICON_SIZE} strokeWidth={ICON_STROKE} />
         </ToolBtn>
@@ -147,7 +147,7 @@ export function Toolbar({
       <div className="flex-1" />
 
       {/* View toggles */}
-      <div className="flex gap-0.5">
+      <div className="flex gap-1">
         <ToggleBtn
           title={dualPane ? "Single pane" : "Dual pane"}
           active={dualPane}
@@ -171,24 +171,24 @@ export function Toolbar({
         </ToggleBtn>
       </div>
 
-      <div className="h-5 w-px bg-border-raised" />
+      <div className="mx-1 h-4 w-px bg-border" />
 
       {/* Session Log — labeled button so it's easy to find */}
       <button
         onClick={onShowLog}
         title="Session activity log"
-        className="flex items-center gap-1.5 rounded-input border border-border-input bg-surface-chip px-3 py-1.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent-dark/40 hover:bg-surface-hover hover:text-accent-dark"
+        className="flex items-center gap-1.5 rounded-input border border-border-input bg-surface-chip px-3 py-1.5 text-[11.5px] font-medium text-text-secondary transition-colors hover:border-accent-dark/40 hover:bg-surface-hover hover:text-accent-dark"
       >
         <History size={13} strokeWidth={ICON_STROKE} />
         Session Log
       </button>
 
-      <div className="h-5 w-px bg-border-raised" />
+      <div className="mx-1 h-4 w-px bg-border" />
 
       {/* Disconnect */}
       <button
         onClick={onDisconnect}
-        className="flex items-center gap-1.5 rounded-input border border-border-input px-3 py-1.5 text-[12px] text-text-secondary transition-colors hover:border-danger/40 hover:text-danger"
+        className="flex items-center gap-1.5 rounded-input border border-border-input px-3 py-1.5 text-[11.5px] text-text-secondary transition-colors hover:border-danger/40 hover:text-danger"
       >
         <LogOut size={13} strokeWidth={ICON_STROKE} />
         Disconnect
@@ -215,7 +215,7 @@ function ToolBtn({
       title={title}
       onClick={onClick}
       disabled={disabled}
-      className={`flex h-[30px] w-8 items-center justify-center rounded-[7px] transition-colors disabled:opacity-35 ${
+      className={`flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors disabled:opacity-35 ${
         danger
           ? "text-danger/70 hover:bg-red-50 hover:text-danger"
           : "text-text-tertiary hover:bg-surface-chip hover:text-text-primary"
@@ -241,7 +241,7 @@ function ToggleBtn({
     <button
       title={title}
       onClick={onClick}
-      className={`flex h-[30px] w-8 items-center justify-center rounded-[7px] transition-colors ${
+      className={`flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors ${
         active
           ? "bg-accent/[0.12] text-accent-dark"
           : "text-text-tertiary hover:bg-surface-chip hover:text-text-primary"

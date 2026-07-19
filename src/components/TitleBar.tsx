@@ -40,12 +40,14 @@ export function TitleBar({
       {/* Logo */}
       <div className="flex flex-none items-center gap-2.5">
         <div
-          className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[7px] text-[13px] font-bold text-white"
+          className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[8px] text-[13px] font-bold text-white"
           style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
         >
           H
         </div>
-        <span className="text-[14px] font-semibold tracking-[0.2px] text-text-primary">Harbor</span>
+        <span className="text-[13.5px] font-semibold tracking-[-0.3px] text-text-primary">
+          Harbor
+        </span>
       </div>
 
       {/* Divider */}
@@ -84,7 +86,7 @@ export function TitleBar({
           title="Download history"
           className="relative flex h-7 w-7 items-center justify-center rounded-[7px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
         >
-          <Download size={15} strokeWidth={1.9} />
+          <Download size={15} strokeWidth={2} />
           {downloadCount > 0 && (
             <span
               className="absolute -right-0.5 -top-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] font-mono text-[9px] font-bold text-white"
@@ -170,7 +172,7 @@ function NotificationBell({
         className="relative flex h-7 w-7 items-center justify-center rounded-[7px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
         title="Notifications"
       >
-        <Bell size={16} strokeWidth={1.9} />
+        <Bell size={16} strokeWidth={2} />
         {unreadCount > 0 && (
           <span
             className="absolute -right-0.5 -top-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] font-mono text-[9px] font-bold text-white"
@@ -251,7 +253,7 @@ function TitleBarTab({ tab, isActive, onActivate, onClose, canClose }: TitleBarT
   return (
     <div
       onClick={onActivate}
-      className={`group flex h-8 cursor-pointer items-center gap-2 rounded-t px-3 text-[12.5px] transition-colors ${
+      className={`group flex h-8 cursor-pointer items-center gap-2 rounded-t px-3 text-[12px] transition-colors ${
         isActive
           ? "border border-b-[2px] border-border-input border-b-accent-dark bg-surface font-medium text-text-primary"
           : "text-text-tertiary hover:text-text-secondary"

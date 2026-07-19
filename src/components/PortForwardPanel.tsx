@@ -17,9 +17,11 @@ export function PortForwardPanel({ tunnels, tunnelError, onAdd, onRemove, onClea
   return (
     <div className="flex h-full flex-col bg-surface-pane">
       {/* Header */}
-      <div className="flex h-[36px] flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3">
-        <ArrowLeftRight size={13} strokeWidth={1.9} className="text-text-faint" />
-        <span className="text-[12px] font-medium text-text-secondary">Tunnels</span>
+      <div className="flex h-8 flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3">
+        <ArrowLeftRight size={13} strokeWidth={2} className="text-text-faint" />
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.6px] text-text-tertiary">
+          Tunnels
+        </span>
         <div className="flex-1" />
         <button
           onClick={() => {
@@ -48,7 +50,7 @@ export function PortForwardPanel({ tunnels, tunnelError, onAdd, onRemove, onClea
           <p className="mt-8 text-center text-[12px] text-text-faint">No active tunnels</p>
         )}
         {tunnels.map((t) => (
-          <div key={t.id} className="flex items-center gap-2 px-3 py-[7px] hover:bg-surface-hover">
+          <div key={t.id} className="flex items-center gap-2 px-4 py-[9px] hover:bg-surface-hover">
             <span className="font-mono text-[12px] font-medium text-text-primary">
               :{t.localPort}
             </span>

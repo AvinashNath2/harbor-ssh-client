@@ -624,8 +624,8 @@ export function FileBrowser({
 
       {/* Column header */}
       <div
-        className="grid flex-none select-none items-center gap-3 border-b border-border-raised bg-surface-colheader px-3.5 font-mono text-[10px] font-semibold uppercase tracking-[0.5px] text-text-tertiary"
-        style={{ height: "28px", gridTemplateColumns: gridCols }}
+        className="grid flex-none select-none items-center gap-3 border-b border-border-raised bg-surface-colheader px-3.5 font-mono text-[11px] font-medium tracking-[0.2px] text-text-tertiary"
+        style={{ height: "32px", gridTemplateColumns: gridCols }}
       >
         <span />
         <SortHeader col="name" label="Name" active={sortCol} dir={sortDir} onClick={toggleSort} />
@@ -701,11 +701,11 @@ export function FileBrowser({
                   onSelectionChange(new Set());
                   onNavigate(parent);
                 }}
-                className="grid cursor-pointer select-none items-center gap-3 border-b border-border-subtle px-3.5 transition-colors hover:bg-surface-hover"
-                style={{ height: "31px", gridTemplateColumns: gridCols }}
+                className="grid cursor-pointer select-none items-center gap-3 border-b border-border-subtle px-3.5 py-[7px] transition-colors hover:bg-surface-hover"
+                style={{ gridTemplateColumns: gridCols }}
               >
                 <div
-                  className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px]"
+                  className="flex h-[14px] w-[14px] flex-shrink-0 items-center justify-center rounded-[4px]"
                   style={{ background: "#e0a53c", border: "1px solid #c8922a" }}
                 />
                 <span className="truncate font-semibold text-[12.5px] text-text-secondary">..</span>
@@ -961,14 +961,14 @@ function FileRow({
       onContextMenu={(e) => {
         onContextMenu(e, entry);
       }}
-      className={`grid select-none items-center gap-3 border-b border-border-subtle px-3.5 transition-colors ${
+      className={`grid select-none items-center gap-3 border-b border-border-subtle px-3.5 py-[7px] transition-colors ${
         isDir ? "cursor-pointer" : "cursor-default"
-      } ${isSelected ? "bg-accent/[0.09]" : "hover:bg-surface-hover"}`}
-      style={{ height: "31px", gridTemplateColumns: gridCols }}
+      } ${isSelected ? "bg-accent/[0.07]" : "hover:bg-surface-hover"}`}
+      style={{ gridTemplateColumns: gridCols }}
     >
       {/* Icon */}
       <div
-        className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] font-mono text-[7px] font-bold"
+        className="flex h-[14px] w-[14px] flex-shrink-0 items-center justify-center rounded-[4px] font-mono text-[7px] font-bold"
         style={{ background: bg, color: fg }}
       >
         {glyph}

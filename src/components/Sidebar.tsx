@@ -118,7 +118,7 @@ export function Sidebar({
       style={{ width: width ?? 250 }}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 pb-3 pt-3.5">
+      <div className="flex items-center gap-2 pt-4 pb-3 px-4">
         <span className="text-[13px] font-semibold text-text-primary">Sessions</span>
         <span className="font-mono text-[11px] text-text-faint">{profiles.length}</span>
         <div className="flex-1" />
@@ -137,7 +137,7 @@ export function Sidebar({
       <div className="px-3">
         <button
           onClick={onNewSession}
-          className="flex h-9 w-full items-center justify-center gap-2 rounded-input text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+          className="flex h-8 w-full items-center justify-center gap-2 rounded-input text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
           style={{
             background: "linear-gradient(150deg, #3f7be0, #2f6bdb)",
             boxShadow: "0 4px 12px -4px rgba(47,107,219,0.5)",
@@ -150,7 +150,7 @@ export function Sidebar({
 
       {/* Search */}
       <div className="mt-2.5 px-3">
-        <div className="flex h-[34px] items-center gap-2 rounded-input border border-border-input bg-surface-pane px-3">
+        <div className="flex h-[32px] items-center gap-2 rounded-input border border-border-input bg-surface-pane px-3">
           <Search size={13} strokeWidth={2} className="text-text-faint" />
           <input
             value={search}
@@ -158,7 +158,7 @@ export function Sidebar({
               setSearch(e.target.value);
             }}
             placeholder="Search hosts…"
-            className="flex-1 bg-transparent text-[12.5px] text-text-primary outline-none placeholder:text-text-faint"
+            className="flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-faint"
           />
         </div>
       </div>
@@ -281,14 +281,14 @@ export function Sidebar({
       {/* Import from SSH config */}
       <button
         onClick={onImportSshConfig}
-        className="mt-2 flex items-center gap-2 border-t border-border px-3 py-2 text-[11.5px] font-medium text-text-tertiary transition-colors hover:bg-surface-sidebarHover hover:text-accent-dark"
+        className="mt-2 flex items-center gap-2 border-t border-border px-3 py-[9px] text-[11.5px] font-medium text-text-tertiary transition-colors hover:bg-surface-sidebarHover hover:text-accent-dark"
       >
         <DownloadIcon size={12} strokeWidth={2} />
         Import from ~/.ssh/config
       </button>
 
       {/* User row */}
-      <div className="flex items-center gap-2.5 border-t border-border px-3 py-2.5">
+      <div className="flex items-center gap-2.5 border-t border-border px-3 py-[10px]">
         <div className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full bg-[#dfe7f5] text-accent-dark">
           <User size={13} strokeWidth={2.2} />
         </div>
@@ -306,7 +306,7 @@ export function Sidebar({
 function TreeSection({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="mt-1">
-      <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-[1.2px] text-text-faint">
+      <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-text-faint">
         {label}
       </div>
       {children}
@@ -336,7 +336,7 @@ function TreeCaret({
   return (
     <div
       onClick={onClick}
-      className="flex cursor-pointer items-center gap-1.5 rounded-input py-1 pr-2 transition-colors hover:bg-surface-sidebarHover"
+      className="flex cursor-pointer items-center gap-1.5 rounded-input py-[6px] pr-2 transition-colors hover:bg-surface-sidebarHover"
       style={{ paddingLeft: `${(depth * 12 + 6).toString()}px` }}
     >
       <span
@@ -391,8 +391,8 @@ function SessionRow({
   return (
     <div
       onClick={onSelect}
-      className={`group flex cursor-pointer items-center gap-2 rounded-input py-1.5 pr-2 transition-colors ${
-        isActive ? "bg-[rgba(47,107,219,0.10)] text-text-heading" : "hover:bg-surface-sidebarHover"
+      className={`group flex cursor-pointer items-center gap-2 rounded-input py-[7px] pr-2 transition-colors ${
+        isActive ? "bg-accent/[0.08] text-text-heading" : "hover:bg-surface-sidebarHover"
       }`}
       style={{
         paddingLeft: `${(depth * 12 + 6).toString()}px`,
@@ -477,7 +477,7 @@ function AddInFolderRow({ depth, onClick }: { depth: number; onClick: () => void
   return (
     <div
       onClick={onClick}
-      className="flex cursor-pointer items-center gap-2 rounded-input py-1.5 pr-2 text-text-faint transition-colors hover:bg-surface-sidebarHover hover:text-accent-dark"
+      className="flex cursor-pointer items-center gap-2 rounded-input py-[7px] pr-2 text-text-faint transition-colors hover:bg-surface-sidebarHover hover:text-accent-dark"
       style={{ paddingLeft: `${(depth * 12 + 6).toString()}px` }}
     >
       <span className="w-3 flex-shrink-0" />
