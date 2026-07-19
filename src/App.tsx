@@ -414,6 +414,8 @@ function DisconnectedApp({
         unreadCount={0}
         onMarkAllRead={() => undefined}
         onClearNotifications={() => undefined}
+        downloadCount={0}
+        onShowDownloads={() => undefined}
       />
       <div className="flex min-h-0 flex-1">
         {sidebarHidden ? (
@@ -767,6 +769,10 @@ function ConnectedApp({
         unreadCount={notifications.unreadCount}
         onMarkAllRead={notifications.markAllRead}
         onClearNotifications={notifications.clear}
+        downloadCount={dlHistory.records.length}
+        onShowDownloads={() => {
+          void dlHistory.openPanel();
+        }}
       />
 
       <Toolbar
@@ -817,10 +823,6 @@ function ConnectedApp({
         }}
         showTunnels={showTunnels}
         onShowLog={onShowLog}
-        onShowDownloads={() => {
-          void dlHistory.openPanel();
-        }}
-        downloadRecords={dlHistory.records}
       />
 
       {/* Main content area */}

@@ -1,4 +1,4 @@
-import { AlertTriangle, Bell, CheckCircle2, Plus, X, XCircle, Zap } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, Download, Plus, X, XCircle, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AppNotification } from "../hooks/useNotifications";
 import type { Tab } from "../hooks/useTabs";
@@ -14,6 +14,8 @@ interface TitleBarProps {
   unreadCount: number;
   onMarkAllRead: () => void;
   onClearNotifications: () => void;
+  downloadCount: number;
+  onShowDownloads: () => void;
 }
 
 export function TitleBar({
@@ -27,6 +29,8 @@ export function TitleBar({
   unreadCount,
   onMarkAllRead,
   onClearNotifications,
+  downloadCount,
+  onShowDownloads,
 }: TitleBarProps) {
   return (
     <div
@@ -70,6 +74,25 @@ export function TitleBar({
           className="flex h-6 w-6 items-center justify-center rounded text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
         >
           <Plus size={15} strokeWidth={1.9} />
+        </button>
+      </div>
+
+      {/* Downloads icon */}
+      <div className="relative flex-shrink-0">
+        <button
+          onClick={onShowDownloads}
+          title="Download history"
+          className="relative flex h-7 w-7 items-center justify-center rounded-[7px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
+        >
+          <Download size={15} strokeWidth={1.9} />
+          {downloadCount > 0 && (
+            <span
+              className="absolute -right-0.5 -top-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full px-[3px] font-mono text-[9px] font-bold text-white"
+              style={{ background: "linear-gradient(150deg,#3f7be0,#2f6bdb)" }}
+            >
+              {downloadCount > 99 ? "99+" : downloadCount.toString()}
+            </span>
+          )}
         </button>
       </div>
 

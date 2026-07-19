@@ -13,7 +13,6 @@ import {
   Upload as UploadIcon,
   Download as DownloadIcon,
 } from "lucide-react";
-import type { DownloadRecord } from "../api";
 import type { ConnectResult } from "../api";
 
 interface ToolbarProps {
@@ -38,8 +37,6 @@ interface ToolbarProps {
   onToggleTerminal: () => void;
   onToggleTunnels: () => void;
   onShowLog: () => void;
-  onShowDownloads: () => void;
-  downloadRecords: DownloadRecord[];
 }
 
 const ICON_SIZE = 15;
@@ -67,8 +64,6 @@ export function Toolbar({
   onToggleTerminal,
   onToggleTunnels,
   onShowLog,
-  onShowDownloads,
-  downloadRecords,
 }: ToolbarProps) {
   const hasSelection = selected.size > 0;
 
@@ -177,24 +172,6 @@ export function Toolbar({
       </div>
 
       <div className="h-5 w-px bg-border-raised" />
-
-      {/* Downloads history */}
-      <button
-        onClick={onShowDownloads}
-        title="Download history"
-        className="relative flex items-center gap-1.5 rounded-input border border-border-input bg-surface-chip px-3 py-1.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent-dark/40 hover:bg-surface-hover hover:text-accent-dark"
-      >
-        <DownloadIcon size={13} strokeWidth={ICON_STROKE} />
-        Downloads
-        {downloadRecords.length > 0 && (
-          <span
-            className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold text-white"
-            style={{ background: "linear-gradient(150deg,#3f7be0,#2f6bdb)" }}
-          >
-            {downloadRecords.length}
-          </span>
-        )}
-      </button>
 
       {/* Session Log — labeled button so it's easy to find */}
       <button
