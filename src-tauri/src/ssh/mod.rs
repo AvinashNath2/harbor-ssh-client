@@ -249,10 +249,13 @@ impl SessionBundle {
         let sftp = self.session.sftp().map_err(AppError::from)?;
         let mut src = std::fs::File::open(local_path)
             .map_err(|e| AppError::internal(format!("Cannot open file: {e}")))?;
-        let mut dst = sftp.create(Path::new(remote_path)).map_err(AppError::from)?;
+        let mut dst = sftp
+            .create(Path::new(remote_path))
+            .map_err(AppError::from)?;
         let bytes = std::io::copy(&mut src, &mut dst)
             .map_err(|e| AppError::internal(format!("Upload failed: {e}")))?;
-        dst.flush().map_err(|e| AppError::internal(format!("Flush failed: {e}")))?;
+        dst.flush()
+            .map_err(|e| AppError::internal(format!("Flush failed: {e}")))?;
         Ok(bytes)
     }
 
@@ -311,14 +314,14 @@ impl SessionBundle {
         transfer_id: &str,
         mut on_progress: impl FnMut(u64, u64),
     ) -> Result<u64, AppError> {
-        let total = std::fs::metadata(local_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let total = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
 
         let sftp = self.session.sftp().map_err(AppError::from)?;
         let mut src = std::fs::File::open(local_path)
             .map_err(|e| AppError::internal(format!("Cannot open file: {e}")))?;
-        let mut dst = sftp.create(Path::new(remote_path)).map_err(AppError::from)?;
+        let mut dst = sftp
+            .create(Path::new(remote_path))
+            .map_err(AppError::from)?;
 
         let mut buf = [0u8; 65536];
         let mut transferred = 0u64;
@@ -346,7 +349,8 @@ impl SessionBundle {
             on_progress(transferred, total);
         }
 
-        dst.flush().map_err(|e| AppError::internal(format!("Flush failed: {e}")))?;
+        dst.flush()
+            .map_err(|e| AppError::internal(format!("Flush failed: {e}")))?;
         Ok(transferred)
     }
 
@@ -364,9 +368,7 @@ impl SessionBundle {
         let home_dir = bundle
             .exec("echo $HOME")
             .unwrap_or_else(|_| String::from("/"));
-        let os_info = bundle
-            .exec("uname -sr")
-            .unwrap_or_default();
+        let os_info = bundle.exec("uname -sr").unwrap_or_default();
         let ip_addr = bundle.ip_addr.clone();
 
         let result = ConnectResult {
@@ -471,8 +473,7 @@ impl SessionBundle {
         let mut file = sftp.create(Path::new(path)).map_err(AppError::from)?;
         Write::write_all(&mut file, content.as_bytes())
             .map_err(|e| AppError::internal(format!("Write failed: {e}")))?;
-        Write::flush(&mut file)
-            .map_err(|e| AppError::internal(format!("Flush failed: {e}")))?;
+        Write::flush(&mut file).map_err(|e| AppError::internal(format!("Flush failed: {e}")))?;
         Ok(())
     }
 }
@@ -502,7 +503,7 @@ pub(crate) fn shell_single_quote(input: &str) -> Option<String> {
 pub(crate) fn base64_encode(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
@@ -510,8 +511,16 @@ pub(crate) fn base64_encode(bytes: &[u8]) -> String {
         let n = (b0 << 16) | (b1 << 8) | b2;
         let _ = out.write_char(TABLE[((n >> 18) & 63) as usize] as char);
         let _ = out.write_char(TABLE[((n >> 12) & 63) as usize] as char);
-        let _ = out.write_char(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
-        let _ = out.write_char(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+        let _ = out.write_char(if chunk.len() > 1 {
+            TABLE[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        let _ = out.write_char(if chunk.len() > 2 {
+            TABLE[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -604,14 +613,20 @@ mod tests {
 
     #[test]
     fn shell_quote_ordinary_path_unchanged() {
-        assert_eq!(shell_single_quote("/home/ubuntu/foo.txt").unwrap(), "/home/ubuntu/foo.txt");
+        assert_eq!(
+            shell_single_quote("/home/ubuntu/foo.txt").unwrap(),
+            "/home/ubuntu/foo.txt"
+        );
     }
 
     #[test]
     fn shell_quote_single_quote_is_escaped() {
         // O'Brien.txt → O'\''Brien.txt so the outer 'O'\''Brien.txt' shell-quotes
         // reconstruct the literal name.
-        assert_eq!(shell_single_quote("O'Brien.txt").unwrap(), "O'\\''Brien.txt");
+        assert_eq!(
+            shell_single_quote("O'Brien.txt").unwrap(),
+            "O'\\''Brien.txt"
+        );
     }
 
     #[test]
@@ -640,4 +655,3 @@ mod tests {
         assert_eq!(out, "'\\'''\\''");
     }
 }
-

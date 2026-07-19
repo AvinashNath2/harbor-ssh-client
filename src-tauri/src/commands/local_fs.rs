@@ -56,8 +56,7 @@ pub fn rename_local_path(old_path: String, new_name: String) -> Result<(), AppEr
         .parent()
         .ok_or_else(|| AppError::internal("Cannot determine parent directory"))?;
     let new = parent.join(&new_name);
-    std::fs::rename(old, &new)
-        .map_err(|e| AppError::internal(format!("Failed to rename: {e}")))
+    std::fs::rename(old, &new).map_err(|e| AppError::internal(format!("Failed to rename: {e}")))
 }
 
 #[tauri::command]

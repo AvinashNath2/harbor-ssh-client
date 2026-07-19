@@ -26,9 +26,7 @@ pub async fn test_connection(
 /// Rebuild the main SSH session using cached credentials from the previous
 /// connect. Used to auto-recover from network drops.
 #[tauri::command]
-pub async fn reconnect(
-    state: tauri::State<'_, SshState>,
-) -> Result<ConnectResult, AppError> {
+pub async fn reconnect(state: tauri::State<'_, SshState>) -> Result<ConnectResult, AppError> {
     let creds = state
         .creds
         .lock()

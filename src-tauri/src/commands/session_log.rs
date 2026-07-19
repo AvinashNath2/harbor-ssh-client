@@ -170,7 +170,8 @@ pub fn list_sessions(state: tauri::State<'_, Db>) -> Result<Vec<SessionRecord>, 
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -237,10 +238,7 @@ pub fn load_session(
 }
 
 #[tauri::command]
-pub fn delete_session(
-    state: tauri::State<'_, Db>,
-    session_id: String,
-) -> Result<(), String> {
+pub fn delete_session(state: tauri::State<'_, Db>, session_id: String) -> Result<(), String> {
     state
         .conn
         .lock()
@@ -254,10 +252,7 @@ pub fn delete_session(
 }
 
 #[tauri::command]
-pub fn delete_sessions_before(
-    state: tauri::State<'_, Db>,
-    before_ms: i64,
-) -> Result<(), String> {
+pub fn delete_sessions_before(state: tauri::State<'_, Db>, before_ms: i64) -> Result<(), String> {
     state
         .conn
         .lock()

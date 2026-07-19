@@ -41,11 +41,13 @@ impl Db {
              CREATE INDEX IF NOT EXISTS idx_cmds_sess ON commands(session_id, idx);",
         )?;
         // Migrate existing DBs that were created before profile columns were added.
-        let has_profile: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='profile_name'",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let has_profile: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='profile_name'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
         if has_profile == 0 {
             conn.execute_batch(
                 "ALTER TABLE sessions ADD COLUMN profile_id TEXT;
@@ -54,11 +56,13 @@ impl Db {
         }
 
         // Migrate commands table to add source column.
-        let has_source: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('commands') WHERE name='source'",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let has_source: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('commands') WHERE name='source'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
         if has_source == 0 {
             conn.execute_batch("ALTER TABLE commands ADD COLUMN source TEXT;")?;
         }
@@ -73,6 +77,8 @@ impl Db {
             rusqlite::params![now_ms],
         )?;
 
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 }

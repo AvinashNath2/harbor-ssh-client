@@ -46,10 +46,7 @@ pub async fn rename_path(
 }
 
 #[tauri::command]
-pub async fn delete_path(
-    state: tauri::State<'_, SshState>,
-    path: String,
-) -> Result<(), AppError> {
+pub async fn delete_path(state: tauri::State<'_, SshState>, path: String) -> Result<(), AppError> {
     sftp_op!(state, |bundle| bundle.delete_entry(&path))
 }
 

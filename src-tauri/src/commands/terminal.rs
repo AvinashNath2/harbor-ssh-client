@@ -60,14 +60,14 @@ pub async fn open_terminal(
 
         // Build the session inside this thread — Session is !Send so it must
         // never cross a thread boundary, but creating it here is fine.
-        let bundle = match SessionBundle::connect(&creds.host, creds.port, &creds.username, &creds.auth)
-        {
-            Ok(b) => b,
-            Err(e) => {
-                let _ = ready_tx.send(Err(e));
-                return;
-            }
-        };
+        let bundle =
+            match SessionBundle::connect(&creds.host, creds.port, &creds.username, &creds.auth) {
+                Ok(b) => b,
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e));
+                    return;
+                }
+            };
 
         // Request a PTY and start a shell, then go non-blocking.
         let mut channel = match bundle.session.channel_session() {
@@ -162,7 +162,13 @@ pub async fn open_terminal(
                 }
                 Ok(n) => {
                     let data = crate::ssh::base64_encode(&read_buf[..n]);
-                    let _ = app.emit("terminal-data", TerminalData { id: tid.clone(), data });
+                    let _ = app.emit(
+                        "terminal-data",
+                        TerminalData {
+                            id: tid.clone(),
+                            data,
+                        },
+                    );
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(_) => break,
@@ -271,4 +277,3 @@ pub fn close_terminal(
     }
     Ok(())
 }
-

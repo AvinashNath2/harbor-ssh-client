@@ -73,7 +73,13 @@ pub async fn start_port_forward(
     let remote_host2 = remote_host.clone();
 
     std::thread::spawn(move || {
-        let _ = app.emit("pf-listening", PfListeningEvent { id: id2.clone(), local_port });
+        let _ = app.emit(
+            "pf-listening",
+            PfListeningEvent {
+                id: id2.clone(),
+                local_port,
+            },
+        );
 
         // Non-blocking accept loop so we can respond to the stop signal promptly.
         listener.set_nonblocking(true).ok();
@@ -92,7 +98,13 @@ pub async fn start_port_forward(
                     let id3 = id2.clone();
                     std::thread::spawn(move || {
                         if let Err(msg) = relay(stream, &c, &rh, rp) {
-                            let _ = a.emit("pf-error", PfErrorEvent { id: id3, message: msg });
+                            let _ = a.emit(
+                                "pf-error",
+                                PfErrorEvent {
+                                    id: id3,
+                                    message: msg,
+                                },
+                            );
                         }
                     });
                 }
@@ -114,7 +126,12 @@ pub async fn start_port_forward(
 /// Bi-directional relay between a local TCP stream and an SSH direct-tcpip
 /// channel. Returns `Ok(())` on normal close, `Err(message)` only for errors
 /// that prevent the tunnel from being established at all.
-fn relay(mut local: TcpStream, creds: &StoredCreds, remote_host: &str, remote_port: u16) -> Result<(), String> {
+fn relay(
+    mut local: TcpStream,
+    creds: &StoredCreds,
+    remote_host: &str,
+    remote_port: u16,
+) -> Result<(), String> {
     let bundle = SessionBundle::connect(&creds.host, creds.port, &creds.username, &creds.auth)
         .map_err(|e| e.message.clone())?;
 
@@ -195,10 +212,7 @@ fn relay(mut local: TcpStream, creds: &StoredCreds, remote_host: &str, remote_po
 }
 
 #[tauri::command]
-pub fn stop_port_forward(
-    state: tauri::State<'_, SshState>,
-    id: String,
-) -> Result<(), AppError> {
+pub fn stop_port_forward(state: tauri::State<'_, SshState>, id: String) -> Result<(), AppError> {
     let guard = state
         .port_forwards
         .lock()
@@ -229,9 +243,7 @@ pub fn list_port_forwards(
 }
 
 #[tauri::command]
-pub fn stop_all_port_forwards(
-    state: tauri::State<'_, SshState>,
-) -> Result<(), AppError> {
+pub fn stop_all_port_forwards(state: tauri::State<'_, SshState>) -> Result<(), AppError> {
     let guard = state
         .port_forwards
         .lock()
