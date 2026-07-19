@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   ArrowRight,
+  Box,
   FilePlus2,
   FolderPlus,
   History,
@@ -22,6 +23,7 @@ interface ToolbarProps {
   dualPane: boolean;
   showTerminal: boolean;
   showTunnels: boolean;
+  showDocker: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
   onGoBack: () => void;
@@ -36,6 +38,7 @@ interface ToolbarProps {
   onToggleDualPane: () => void;
   onToggleTerminal: () => void;
   onToggleTunnels: () => void;
+  onToggleDocker: () => void;
   onShowLog: () => void;
 }
 
@@ -49,6 +52,7 @@ export function Toolbar({
   dualPane,
   showTerminal,
   showTunnels,
+  showDocker,
   canGoBack,
   canGoForward,
   onGoBack,
@@ -63,6 +67,7 @@ export function Toolbar({
   onToggleDualPane,
   onToggleTerminal,
   onToggleTunnels,
+  onToggleDocker,
   onShowLog,
 }: ToolbarProps) {
   const hasSelection = selected.size > 0;
@@ -168,6 +173,13 @@ export function Toolbar({
           onClick={onToggleTerminal}
         >
           <PanelBottom size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+        </ToggleBtn>
+        <ToggleBtn
+          title={showDocker ? "Hide Docker Explorer" : "Docker Infrastructure"}
+          active={showDocker}
+          onClick={onToggleDocker}
+        >
+          <Box size={ICON_SIZE} strokeWidth={ICON_STROKE} />
         </ToggleBtn>
       </div>
 

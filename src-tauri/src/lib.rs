@@ -7,13 +7,15 @@ use commands::{
     append_command, cancel_transfer, chmod_file, clear_download_history, close_session,
     close_terminal, compute_folder_size, connect, connection_status, create_folder, create_session,
     delete_download, delete_local_path, delete_path, delete_profile, delete_session,
-    delete_sessions_before, disconnect, download_file, download_file_queued, get_file_info,
-    get_local_home, list_downloads, list_folder, list_local_folder, list_port_forwards,
-    list_profiles, list_sessions, load_session, open_terminal, parse_ssh_config, ping,
-    ping_connection, read_file_preview, reconnect, rename_local_path, rename_path, resize_terminal,
-    reveal_in_finder, save_download, save_profile, start_port_forward, stop_all_port_forwards,
-    stop_port_forward, test_connection, upload_file, upload_file_queued, write_file_text,
-    write_terminal,
+    delete_sessions_before, disconnect, docker_available, docker_container_action,
+    docker_container_inspect, docker_container_logs, docker_container_stats, docker_image_action,
+    download_file, download_file_queued, get_file_info, get_local_home, list_compose_projects,
+    list_docker_containers, list_docker_images, list_docker_networks, list_docker_volumes,
+    list_downloads, list_folder, list_local_folder, list_port_forwards, list_profiles,
+    list_sessions, load_session, open_terminal, parse_ssh_config, ping, ping_connection,
+    read_file_preview, reconnect, rename_local_path, rename_path, resize_terminal, reveal_in_finder,
+    save_download, save_profile, start_port_forward, stop_all_port_forwards, stop_port_forward,
+    test_connection, upload_file, upload_file_queued, write_file_text, write_terminal,
 };
 use ssh::SshState;
 
@@ -99,6 +101,17 @@ pub fn run() {
             list_downloads,
             delete_download,
             clear_download_history,
+            docker_available,
+            list_docker_containers,
+            list_docker_images,
+            list_docker_networks,
+            list_docker_volumes,
+            list_compose_projects,
+            docker_container_inspect,
+            docker_container_logs,
+            docker_container_stats,
+            docker_container_action,
+            docker_image_action,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

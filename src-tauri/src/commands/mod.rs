@@ -1,5 +1,6 @@
 pub mod connect;
 pub mod disconnect;
+pub mod docker;
 pub mod downloads;
 pub mod fs;
 pub mod local_fs;
@@ -34,3 +35,8 @@ pub use session_log::{
 pub use ssh_config::parse_ssh_config;
 pub use status::{connection_status, ping_connection};
 pub use terminal::{close_terminal, open_terminal, resize_terminal, write_terminal};
+pub use docker::{
+    docker_available, docker_container_action, docker_container_inspect, docker_container_logs,
+    docker_container_stats, docker_image_action, list_compose_projects, list_docker_containers,
+    list_docker_images, list_docker_networks, list_docker_volumes,
+};

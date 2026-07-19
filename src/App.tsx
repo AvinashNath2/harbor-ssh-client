@@ -10,6 +10,7 @@ import {
   type ConnectionProfile,
   type FileEntry,
 } from "./api";
+import { DockerExplorerPage } from "./components/DockerExplorerPage";
 import { DownloadHistoryPanel } from "./components/DownloadHistoryPanel";
 import { PortForwardPanel } from "./components/PortForwardPanel";
 import { PreviewModal } from "./components/PreviewModal";
@@ -547,6 +548,9 @@ function ConnectedApp({
   const localFiles = useLocalFiles();
   const [dualPane, setDualPane] = useState(false);
 
+  // Docker Explorer
+  const [showDocker, setShowDocker] = useState(false);
+
   // Phase 5 — Terminal
   // Auto-open on connect so the user sees the shell alongside the file browser.
   // Once mounted, keep it alive (hide with CSS) so SSH sessions survive toggle.
@@ -783,6 +787,8 @@ function ConnectedApp({
         busy={fileOps.busy}
         dualPane={dualPane}
         showTerminal={showTerminal}
+        showTunnels={showTunnels}
+        showDocker={showDocker}
         canGoBack={activeTab.historyIndex > 0}
         canGoForward={activeTab.historyIndex < activeTab.history.length - 1}
         onGoBack={() => {
@@ -823,7 +829,9 @@ function ConnectedApp({
             return !v;
           });
         }}
-        showTunnels={showTunnels}
+        onToggleDocker={() => {
+          setShowDocker((v) => !v);
+        }}
         onShowLog={onShowLog}
       />
 
@@ -1143,6 +1151,14 @@ function ConnectedApp({
           }}
           onClose={() => {
             setShowCommandPalette(false);
+          }}
+        />
+      )}
+
+      {showDocker && (
+        <DockerExplorerPage
+          onClose={() => {
+            setShowDocker(false);
           }}
         />
       )}

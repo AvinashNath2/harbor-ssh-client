@@ -446,3 +446,92 @@ export async function deleteDownload(id: string): Promise<void> {
 export async function clearDownloadHistory(): Promise<void> {
   await invoke("clear_download_history");
 }
+
+// ── Docker ────────────────────────────────────────────────────────────────────
+
+export interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  state: string;
+  created_at: string;
+  ports: string;
+  compose_project: string | null;
+  compose_service: string | null;
+}
+
+export interface DockerImage {
+  id: string;
+  repository: string;
+  tag: string;
+  size: string;
+  created_at: string;
+}
+
+export interface DockerNetwork {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string;
+}
+
+export interface DockerVolume {
+  name: string;
+  driver: string;
+  mountpoint: string;
+}
+
+export interface ComposeProject {
+  name: string;
+  status: string;
+  config_files: string;
+}
+
+export interface ContainerStats {
+  name: string;
+  cpu_perc: string;
+  mem_usage: string;
+  net_io: string;
+  block_io: string;
+}
+
+export async function dockerAvailable(): Promise<boolean> {
+  return invoke<boolean>("docker_available");
+}
+export async function listDockerContainers(): Promise<DockerContainer[]> {
+  return invoke<DockerContainer[]>("list_docker_containers");
+}
+export async function listDockerImages(): Promise<DockerImage[]> {
+  return invoke<DockerImage[]>("list_docker_images");
+}
+export async function listDockerNetworks(): Promise<DockerNetwork[]> {
+  return invoke<DockerNetwork[]>("list_docker_networks");
+}
+export async function listDockerVolumes(): Promise<DockerVolume[]> {
+  return invoke<DockerVolume[]>("list_docker_volumes");
+}
+export async function listComposeProjects(): Promise<ComposeProject[]> {
+  return invoke<ComposeProject[]>("list_compose_projects");
+}
+export async function dockerContainerInspect(id: string): Promise<unknown> {
+  return invoke<unknown>("docker_container_inspect", { id });
+}
+export async function dockerContainerLogs(id: string): Promise<string> {
+  return invoke<string>("docker_container_logs", { id });
+}
+export async function dockerContainerStats(id: string): Promise<ContainerStats> {
+  return invoke<ContainerStats>("docker_container_stats", { id });
+}
+export async function dockerContainerAction(
+  id: string,
+  action: "start" | "stop" | "restart" | "kill" | "rm",
+): Promise<void> {
+  await invoke("docker_container_action", { id, action });
+}
+export async function dockerImageAction(
+  id: string,
+  action: "pull" | "rmi",
+): Promise<void> {
+  await invoke("docker_image_action", { id, action });
+}
