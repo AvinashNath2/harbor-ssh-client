@@ -1,17 +1,26 @@
 import {
+  Activity,
   ArrowLeft,
   Box,
   Check,
   ChevronRight,
   Copy,
+  Database,
+  Inbox,
+  Monitor,
   RefreshCw,
+  Server,
+  Shield,
   X,
+  Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Background,
   Controls,
   Handle,
+  MarkerType,
   MiniMap,
   Position,
   ReactFlow,
@@ -43,10 +52,22 @@ type FilterType =
   | "unhealthy"
   | "database"
   | "cache"
+  | "broker"
   | "proxy"
   | "worker"
   | "frontend"
-  | "backend";
+  | "backend"
+  | "monitoring";
+
+type ServiceType =
+  | "database"
+  | "cache"
+  | "broker"
+  | "proxy"
+  | "frontend"
+  | "backend"
+  | "monitoring"
+  | "app";
 
 type ViewMode = "graph" | "list";
 
@@ -65,15 +86,50 @@ function parseHealth(status: string): "healthy" | "unhealthy" | "starting" | nul
   return null;
 }
 
+function detectServiceType(c: DockerContainer): ServiceType {
+  const img = c.image.toLowerCase();
+  if (/kafka|rabbitmq|nats|activemq|pulsar/.test(img))                                          return "broker";
+  if (/postgres|mysql|mariadb|mongo|cassandra|elastic|oracle|mssql|sqlite|cockroach/.test(img)) return "database";
+  if (/redis|memcached|valkey/.test(img))                                                        return "cache";
+  if (/nginx|traefik|haproxy|caddy|envoy|istio|apache/.test(img))                               return "proxy";
+  if (/prometheus|grafana|kibana|datadog|jaeger|zipkin|alertmanager/.test(img))                 return "monitoring";
+  if (/\bnode\b|react|vue|angular|next|nuxt|gatsby|vite|svelte/.test(img))                      return "frontend";
+  if (/python|django|flask|fastapi|java|spring|ruby|rails|php|laravel|dotnet|express|gin|actix/.test(img)) return "backend";
+  return "app";
+}
+
+interface ServiceConfig {
+  Icon: LucideIcon;
+  color: string;
+  bg: string;
+  label: string;
+}
+
+const SERVICE_CONFIG: Record<ServiceType, ServiceConfig> = {
+  database:   { Icon: Database, color: "#1f9d63", bg: "rgba(31,157,99,0.06)",   label: "database"   },
+  cache:      { Icon: Zap,      color: "#7c3aed", bg: "rgba(124,58,237,0.06)",  label: "cache"      },
+  broker:     { Icon: Inbox,    color: "#ea580c", bg: "rgba(234,88,12,0.06)",   label: "broker"     },
+  proxy:      { Icon: Shield,   color: "#0284c7", bg: "rgba(2,132,199,0.06)",   label: "proxy"      },
+  frontend:   { Icon: Monitor,  color: "#0891b2", bg: "rgba(8,145,178,0.06)",   label: "frontend"   },
+  backend:    { Icon: Server,   color: "#6366f1", bg: "rgba(99,102,241,0.06)",  label: "backend"    },
+  monitoring: { Icon: Activity, color: "#d97706", bg: "rgba(217,119,6,0.06)",   label: "monitoring" },
+  app:        { Icon: Box,      color: "#6b7280", bg: "transparent",             label: ""           },
+};
+
+const INFRA_TYPES = new Set<ServiceType>(["database", "cache", "broker"]);
+const APP_TYPES   = new Set<ServiceType>(["backend", "frontend", "app"]);
+
 function detectCategory(c: DockerContainer): Set<string> {
   const img = c.image.toLowerCase();
   const svc = (c.compose_service ?? "").toLowerCase();
   const name = c.name.replace(/^\//, "").toLowerCase();
   const cats = new Set<string>();
+  if (/kafka|rabbitmq|nats|activemq|pulsar/.test(img)) cats.add("broker");
   if (/postgres|mysql|mariadb|mongo|cassandra|elastic|oracle|mssql|sqlite|cockroach/.test(img))
     cats.add("database");
   if (/redis|memcached|valkey/.test(img)) cats.add("cache");
   if (/nginx|traefik|haproxy|caddy|envoy|istio|apache/.test(img)) cats.add("proxy");
+  if (/prometheus|grafana|kibana|datadog|jaeger|zipkin|alertmanager/.test(img)) cats.add("monitoring");
   if (/worker|celery|beat|consumer|queue|scheduler/.test(svc) || /worker|celery|beat/.test(name))
     cats.add("worker");
   if (/\bnode\b|react|vue|angular|next|nuxt|gatsby|vite|svelte/.test(img)) cats.add("frontend");
@@ -89,35 +145,58 @@ interface ContainerNodeData extends Record<string, unknown> {
   isSelected: boolean;
   onSelect: (id: string) => void;
   stats: ContainerStats | null;
+  serviceType: ServiceType;
 }
 
 const ContainerNodeComponent = memo(function ContainerNodeComponent({ data }: NodeProps) {
-  const { container, isSelected, onSelect, stats } = data as ContainerNodeData;
-  const color = containerColor(container.state);
+  const { container, isSelected, onSelect, stats, serviceType } = data as ContainerNodeData;
+  const stateColor = containerColor(container.state);
   const health = parseHealth(container.status);
+  const cfg = SERVICE_CONFIG[serviceType];
+  const { Icon: ServiceIcon } = cfg;
   return (
     <div
       onClick={() => { onSelect(container.id); }}
-      className="cursor-pointer rounded-[8px] bg-surface-pane p-2.5 text-left"
+      className="cursor-pointer rounded-[8px] p-2.5 text-left"
       style={{
-        border: `1px solid ${color}55`,
-        borderLeft: `3px solid ${color}`,
-        minWidth: 180,
+        background: cfg.bg || "var(--color-surface-pane)",
+        border: `1px solid ${stateColor}44`,
+        borderLeft: `3px solid ${stateColor}`,
+        minWidth: 185,
         boxShadow: isSelected
-          ? `0 0 0 2px ${color}66, 0 4px 12px -4px rgba(0,0,0,0.15)`
+          ? `0 0 0 2px ${stateColor}66, 0 4px 12px -4px rgba(0,0,0,0.15)`
           : "0 2px 8px -4px rgba(0,0,0,0.12)",
       }}
     >
       <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
-      <div className="flex items-center gap-1.5">
-        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: color }} />
-        <span className="truncate text-[12px] font-semibold text-text-primary">
-          {container.name.replace(/^\//, "")}
-        </span>
+
+      {/* Name row + service icon */}
+      <div className="flex items-start justify-between gap-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: stateColor }} />
+          <span className="truncate text-[12px] font-semibold text-text-primary">
+            {container.name.replace(/^\//, "")}
+          </span>
+        </div>
+        <ServiceIcon size={13} strokeWidth={1.8} className="mt-0.5 flex-shrink-0" style={{ color: cfg.color, opacity: 0.55 }} />
       </div>
+
+      {/* Image */}
       <div className="mt-1 truncate font-mono text-[10px] text-text-faint">
         {container.image.split(":")[0]}
       </div>
+
+      {/* Service type badge */}
+      {cfg.label && (
+        <div
+          className="mt-1 inline-block rounded-[4px] px-1.5 py-0.5 text-[9px] font-semibold"
+          style={{ background: cfg.color + "18", color: cfg.color }}
+        >
+          {cfg.label}
+        </div>
+      )}
+
+      {/* Live stats */}
       {stats && container.state === "running" ? (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           <span className="rounded-[4px] bg-success/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-success">
@@ -130,6 +209,8 @@ const ContainerNodeComponent = memo(function ContainerNodeComponent({ data }: No
       ) : (
         <div className="mt-0.5 text-[10px] text-text-secondary">{container.status}</div>
       )}
+
+      {/* Health badge */}
       {health && (
         <div
           className={`mt-1 inline-block rounded-[4px] px-1.5 py-0.5 text-[9px] font-semibold ${
@@ -143,16 +224,14 @@ const ContainerNodeComponent = memo(function ContainerNodeComponent({ data }: No
           {health}
         </div>
       )}
-      {container.compose_project && !container.compose_service && (
-        <div className="mt-1 rounded-[4px] bg-accent/[0.08] px-1.5 py-0.5 text-[9.5px] font-medium text-accent-dark">
-          {container.compose_project}
-        </div>
-      )}
+
+      {/* Compose service label */}
       {container.compose_service && (
         <div className="mt-1 rounded-[4px] bg-accent/[0.08] px-1.5 py-0.5 text-[9.5px] font-medium text-accent-dark">
           {container.compose_service}
         </div>
       )}
+
       <Handle type="source" position={Position.Bottom} style={{ opacity: 0 }} />
     </div>
   );
@@ -230,7 +309,7 @@ const FILTER_GROUPS: { label: string; filters: FilterType[] }[] = [
   { label: "State", filters: ["all", "running", "stopped"] },
   { label: "Health", filters: ["healthy", "unhealthy"] },
   { label: "Compose", filters: ["compose"] },
-  { label: "Type", filters: ["database", "cache", "proxy", "worker", "frontend", "backend"] },
+  { label: "Type", filters: ["database", "cache", "broker", "proxy", "worker", "frontend", "backend", "monitoring"] },
 ];
 
 export function DockerExplorerPage({ onClose }: DockerExplorerPageProps) {
@@ -265,6 +344,8 @@ export function DockerExplorerPage({ onClose }: DockerExplorerPageProps) {
             case "compose": return !!c.compose_project;
             case "healthy": return parseHealth(c.status) === "healthy";
             case "unhealthy": return parseHealth(c.status) === "unhealthy";
+            case "broker": return detectCategory(c).has("broker");
+            case "monitoring": return detectCategory(c).has("monitoring");
             default: return detectCategory(c).has(filter);
           }
         })();
@@ -595,7 +676,31 @@ function DockerGraph({
             isSelected: selectedId === c.id,
             onSelect,
             stats: allStats.get(c.name.replace(/^\//, "")) ?? null,
+            serviceType: detectServiceType(c),
           } satisfies ContainerNodeData,
+        });
+      });
+
+      // Inferred service dependency edges: app/backend → database/cache/broker within group
+      projContainers.forEach((appC) => {
+        if (!APP_TYPES.has(detectServiceType(appC))) return;
+        projContainers.forEach((infraC) => {
+          const infraType = detectServiceType(infraC);
+          if (!INFRA_TYPES.has(infraType)) return;
+          const cfg = SERVICE_CONFIG[infraType];
+          newEdges.push({
+            id: `dep-${appC.id}-${infraC.id}`,
+            source: `c-${appC.id}`,
+            target: `c-${infraC.id}`,
+            style: { stroke: cfg.color + "77", strokeWidth: 1.5, strokeDasharray: "4 3" },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: 10,
+              height: 10,
+              color: cfg.color + "99",
+            },
+            animated: appC.state === "running" && infraC.state === "running",
+          });
         });
       });
 
@@ -623,7 +728,31 @@ function DockerGraph({
           isSelected: selectedId === c.id,
           onSelect,
           stats: allStats.get(c.name.replace(/^\//, "")) ?? null,
+          serviceType: detectServiceType(c),
         } satisfies ContainerNodeData,
+      });
+    });
+
+    // Inferred edges among standalone containers
+    standalone.forEach((appC) => {
+      if (!APP_TYPES.has(detectServiceType(appC))) return;
+      standalone.forEach((infraC) => {
+        const infraType = detectServiceType(infraC);
+        if (!INFRA_TYPES.has(infraType)) return;
+        const cfg = SERVICE_CONFIG[infraType];
+        newEdges.push({
+          id: `dep-${appC.id}-${infraC.id}`,
+          source: `c-${appC.id}`,
+          target: `c-${infraC.id}`,
+          style: { stroke: cfg.color + "77", strokeWidth: 1.5, strokeDasharray: "4 3" },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 10,
+            height: 10,
+            color: cfg.color + "99",
+          },
+          animated: appC.state === "running" && infraC.state === "running",
+        });
       });
     });
 
