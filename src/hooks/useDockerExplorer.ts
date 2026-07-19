@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   dockerAvailable,
-  dockerContainerAction,
   dockerContainerInspect,
   dockerContainerLogs,
   dockerContainerStats,
@@ -94,18 +93,9 @@ export function useDockerExplorer() {
     };
   }, [fetchAll]);
 
-  const runContainerAction = useCallback(
-    async (id: string, action: "start" | "stop" | "restart" | "kill" | "rm") => {
-      await dockerContainerAction(id, action);
-      await fetchAll();
-    },
-    [fetchAll],
-  );
-
   return {
     ...state,
     refresh: fetchAll,
-    runContainerAction,
     getLogs: dockerContainerLogs,
     getStats: dockerContainerStats,
     getInspect: dockerContainerInspect,
