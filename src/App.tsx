@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import {
   reconnect as reconnectApi,
+  revealInFinder,
   stopAllPortForwards,
   type ConnectArgs,
   type ConnectResult,
@@ -966,6 +967,9 @@ function ConnectedApp({
                     transfers={queue.transfers}
                     onCancel={queue.cancel}
                     onClearCompleted={queue.clearCompleted}
+                    onReveal={(path) => {
+                      void revealInFinder(path);
+                    }}
                   />
                 </div>
               )}

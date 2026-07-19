@@ -1,13 +1,19 @@
-import { ArrowDown, ArrowUp, X } from "lucide-react";
+import { ArrowDown, ArrowUp, FolderOpen, X } from "lucide-react";
 import type { Transfer } from "../hooks/useTransferQueue";
 
 interface TransferPanelProps {
   transfers: Transfer[];
   onCancel: (id: string) => void;
   onClearCompleted: () => void;
+  onReveal: (localPath: string) => void;
 }
 
-export function TransferPanel({ transfers, onCancel, onClearCompleted }: TransferPanelProps) {
+export function TransferPanel({
+  transfers,
+  onCancel,
+  onClearCompleted,
+  onReveal,
+}: TransferPanelProps) {
   const active = transfers.filter((t) => t.status === "active" || t.status === "pending");
   const done = transfers.filter(
     (t) => t.status === "done" || t.status === "error" || t.status === "cancelled",
@@ -50,7 +56,7 @@ export function TransferPanel({ transfers, onCancel, onClearCompleted }: Transfe
           </div>
         )}
         {transfers.map((t) => (
-          <TransferRow key={t.id} transfer={t} onCancel={onCancel} />
+          <TransferRow key={t.id} transfer={t} onCancel={onCancel} onReveal={onReveal} />
         ))}
       </div>
     </div>
@@ -60,9 +66,11 @@ export function TransferPanel({ transfers, onCancel, onClearCompleted }: Transfe
 function TransferRow({
   transfer: t,
   onCancel,
+  onReveal,
 }: {
   transfer: Transfer;
   onCancel: (id: string) => void;
+  onReveal: (localPath: string) => void;
 }) {
   const pct =
     t.total > 0
@@ -111,6 +119,17 @@ function TransferRow({
           >
             {statusLabel}
           </span>
+          {t.status === "done" && t.direction === "download" && (
+            <button
+              onClick={() => {
+                onReveal(t.localPath);
+              }}
+              title="Show in Finder"
+              className="text-text-faint transition-colors hover:text-accent"
+            >
+              <FolderOpen size={12} strokeWidth={2} />
+            </button>
+          )}
           {(t.status === "active" || t.status === "pending") && (
             <button
               onClick={() => {
