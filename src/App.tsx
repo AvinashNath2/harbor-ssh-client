@@ -452,19 +452,21 @@ function DisconnectedApp({
             <p className="mt-1 text-[12.5px] text-text-secondary">
               Select a saved session or create a new one
             </p>
-            <button
-              onClick={onOpenModal}
-              className="mt-4 rounded-input px-4 py-2 text-[13px] font-semibold text-white"
-              style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
-            >
-              ＋ New Session
-            </button>
-            <button
-              onClick={onShowLog}
-              className="mt-2 rounded-input border border-border-input px-4 py-2 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-surface-chip hover:text-text-primary"
-            >
-              Session Log
-            </button>
+            <div className="mt-4 flex flex-col items-center gap-2">
+              <button
+                onClick={onOpenModal}
+                className="w-full rounded-input px-4 py-2 text-[13px] font-semibold text-white"
+                style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
+              >
+                ＋ New Session
+              </button>
+              <button
+                onClick={onShowLog}
+                className="w-full rounded-input border border-border-input px-4 py-2 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-surface-chip hover:text-text-primary"
+              >
+                Session Log
+              </button>
+            </div>
           </div>
         </main>
       </div>
