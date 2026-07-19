@@ -1,0 +1,16 @@
+# Normalize line endings to LF on all platforms.
+# This prevents Prettier's format:check from failing on Windows
+# where git defaults to checking out CRLF.
+* text=auto eol=lf
+
+# Binary files — never touch line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
