@@ -39,7 +39,11 @@ export function useResizable(
   // Persist size (debounced by React batching — good enough).
   useEffect(() => {
     if (!persistKey) return;
-    try { localStorage.setItem(persistKey, size.toString()); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(persistKey, size.toString());
+    } catch {
+      /* ignore */
+    }
   }, [persistKey, size]);
 
   const dragStateRef = useRef<{ startPos: number; startSize: number } | null>(null);

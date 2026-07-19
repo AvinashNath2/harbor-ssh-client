@@ -19,7 +19,13 @@ function groupByDate(sessions: SessionRecord[]): { label: string; items: Session
     let label: string;
     if (day >= today) label = "Today";
     else if (day >= yesterday) label = "Yesterday";
-    else label = d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    else
+      label = d.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
     const existing = buckets.get(label) ?? [];
     existing.push(s);
     buckets.set(label, existing);
@@ -31,7 +37,6 @@ function fmtTime(ms: number) {
   return new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
-
 export function SessionListView({ onOpen }: SessionListViewProps) {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,10 +47,14 @@ export function SessionListView({ onOpen }: SessionListViewProps) {
     listSessions()
       .then(setSessions)
       .catch(() => undefined)
-      .finally(() => { setLoading(false); });
+      .finally(() => {
+        setLoading(false);
+      });
   }
 
-  useEffect(() => { reload(); }, []);
+  useEffect(() => {
+    reload();
+  }, []);
 
   async function handleDelete(id: string, e: React.MouseEvent) {
     e.stopPropagation();
@@ -75,7 +84,9 @@ export function SessionListView({ onOpen }: SessionListViewProps) {
           <Search size={13} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
           <input
             value={query}
-            onChange={(e) => { setQuery(e.target.value); }}
+            onChange={(e) => {
+              setQuery(e.target.value);
+            }}
             placeholder="Search sessions by host, user, or IP…"
             className="flex-1 bg-transparent text-[12.5px] text-text-primary outline-none placeholder:text-text-faint"
           />
@@ -96,7 +107,9 @@ export function SessionListView({ onOpen }: SessionListViewProps) {
               <Terminal size={22} strokeWidth={1.6} />
             </div>
             <div>
-              <p className="text-[13px] font-semibold text-text-primary">No sessions recorded yet</p>
+              <p className="text-[13px] font-semibold text-text-primary">
+                No sessions recorded yet
+              </p>
               <p className="mt-1 text-[12px] text-text-secondary">
                 Open a terminal and run some commands — they&apos;ll appear here.
               </p>
@@ -123,7 +136,9 @@ export function SessionListView({ onOpen }: SessionListViewProps) {
             {items.map((s) => (
               <button
                 key={s.id}
-                onClick={() => { onOpen(s); }}
+                onClick={() => {
+                  onOpen(s);
+                }}
                 className="flex w-full items-center gap-4 border-b border-border-subtle px-5 py-3.5 text-left transition-colors hover:bg-surface-hover"
               >
                 {/* Status dot */}
@@ -154,7 +169,9 @@ export function SessionListView({ onOpen }: SessionListViewProps) {
                   <div className="mt-0.5 flex items-center gap-3 font-mono text-[11px] text-text-faint">
                     <span>{s.ip}</span>
                     <span>·</span>
-                    <span>{s.cmdCount.toString()} command{s.cmdCount !== 1 ? "s" : ""}</span>
+                    <span>
+                      {s.cmdCount.toString()} command{s.cmdCount !== 1 ? "s" : ""}
+                    </span>
                     <span>·</span>
                     <span className="flex items-center gap-1">
                       <Clock size={10} strokeWidth={2} />
@@ -168,7 +185,9 @@ export function SessionListView({ onOpen }: SessionListViewProps) {
 
                 {/* Delete */}
                 <button
-                  onClick={(e) => { void handleDelete(s.id, e); }}
+                  onClick={(e) => {
+                    void handleDelete(s.id, e);
+                  }}
                   className="flex-shrink-0 rounded-[6px] p-1.5 text-text-faint opacity-0 transition-all hover:bg-red-50 hover:text-danger group-hover:opacity-100"
                   title="Delete session"
                 >

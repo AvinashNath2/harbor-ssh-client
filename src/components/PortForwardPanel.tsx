@@ -22,7 +22,9 @@ export function PortForwardPanel({ tunnels, tunnelError, onAdd, onRemove, onClea
         <span className="text-[12px] font-medium text-text-secondary">Tunnels</span>
         <div className="flex-1" />
         <button
-          onClick={() => { setShowDialog(true); }}
+          onClick={() => {
+            setShowDialog(true);
+          }}
           className="flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11px] text-text-faint hover:bg-surface-chip hover:text-text-secondary"
         >
           <Plus size={11} strokeWidth={2} />
@@ -46,10 +48,7 @@ export function PortForwardPanel({ tunnels, tunnelError, onAdd, onRemove, onClea
           <p className="mt-8 text-center text-[12px] text-text-faint">No active tunnels</p>
         )}
         {tunnels.map((t) => (
-          <div
-            key={t.id}
-            className="flex items-center gap-2 px-3 py-[7px] hover:bg-surface-hover"
-          >
+          <div key={t.id} className="flex items-center gap-2 px-3 py-[7px] hover:bg-surface-hover">
             <span className="font-mono text-[12px] font-medium text-text-primary">
               :{t.localPort}
             </span>
@@ -61,7 +60,9 @@ export function PortForwardPanel({ tunnels, tunnelError, onAdd, onRemove, onClea
               active
             </span>
             <button
-              onClick={() => { void onRemove(t.id); }}
+              onClick={() => {
+                onRemove(t.id);
+              }}
               className="ml-0.5 flex-shrink-0 rounded p-0.5 text-text-faint hover:bg-surface-chip hover:text-danger"
               title="Stop tunnel"
             >
@@ -74,7 +75,9 @@ export function PortForwardPanel({ tunnels, tunnelError, onAdd, onRemove, onClea
       {showDialog && (
         <AddTunnelDialog
           onAdd={onAdd}
-          onClose={() => { setShowDialog(false); }}
+          onClose={() => {
+            setShowDialog(false);
+          }}
         />
       )}
     </div>

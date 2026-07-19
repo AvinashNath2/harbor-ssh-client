@@ -3,8 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ConnectionProfile, FileEntry } from "../api";
 
 type PaletteResult =
-  | { type: "file"; entry: FileEntry }
-  | { type: "session"; profile: ConnectionProfile };
+  { type: "file"; entry: FileEntry } | { type: "session"; profile: ConnectionProfile };
 
 interface CommandPaletteProps {
   entries: FileEntry[];
@@ -45,14 +44,12 @@ export function CommandPalette({
 
   const sessionResults: PaletteResult[] = q
     ? profiles
-        .filter(
-          (p) =>
-            p.name.toLowerCase().includes(q) ||
-            p.host.toLowerCase().includes(q),
-        )
+        .filter((p) => p.name.toLowerCase().includes(q) || p.host.toLowerCase().includes(q))
         .sort((a, b) => {
-          const aStarts = a.name.toLowerCase().startsWith(q) || a.host.toLowerCase().startsWith(q) ? 0 : 1;
-          const bStarts = b.name.toLowerCase().startsWith(q) || b.host.toLowerCase().startsWith(q) ? 0 : 1;
+          const aStarts =
+            a.name.toLowerCase().startsWith(q) || a.host.toLowerCase().startsWith(q) ? 0 : 1;
+          const bStarts =
+            b.name.toLowerCase().startsWith(q) || b.host.toLowerCase().startsWith(q) ? 0 : 1;
           return aStarts - bStarts;
         })
         .slice(0, 5)
@@ -81,7 +78,10 @@ export function CommandPalette({
   }
 
   function handleKey(e: React.KeyboardEvent) {
-    if (e.key === "Escape") { onClose(); return; }
+    if (e.key === "Escape") {
+      onClose();
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelectedIdx((i) => Math.min(i + 1, allResults.length - 1));
@@ -110,7 +110,9 @@ export function CommandPalette({
     <div
       className="absolute inset-0 z-50 flex items-start justify-center pt-[14vh]"
       style={{ background: "rgba(20,18,15,0.6)", backdropFilter: "blur(5px)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="w-[580px] overflow-hidden rounded-[14px] border border-border-raised bg-surface-pane"
@@ -124,7 +126,10 @@ export function CommandPalette({
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => { setQuery(e.target.value); setSelectedIdx(0); }}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelectedIdx(0);
+            }}
             onKeyDown={handleKey}
             placeholder="Search files, sessions…"
             className="flex-1 bg-transparent text-[14px] text-text-primary outline-none placeholder:text-text-faint"
@@ -153,27 +158,36 @@ export function CommandPalette({
                 const key = r.type === "file" ? r.entry.path : r.profile.id;
                 const label = r.type === "file" ? r.entry.name : r.profile.name;
                 const sub =
-                  r.type === "file"
-                    ? r.entry.path
-                    : `${r.profile.username}@${r.profile.host}`;
-                const icon = r.type === "file"
-                  ? r.entry.kind === "directory"
-                    ? <Folder size={14} strokeWidth={2} />
-                    : <FileText size={14} strokeWidth={2} />
-                  : <Server size={14} strokeWidth={2} />;
+                  r.type === "file" ? r.entry.path : `${r.profile.username}@${r.profile.host}`;
+                const icon =
+                  r.type === "file" ? (
+                    r.entry.kind === "directory" ? (
+                      <Folder size={14} strokeWidth={2} />
+                    ) : (
+                      <FileText size={14} strokeWidth={2} />
+                    )
+                  ) : (
+                    <Server size={14} strokeWidth={2} />
+                  );
 
                 return (
                   <div
                     key={key}
-                    onMouseEnter={() => { setSelectedIdx(idx); }}
-                    onClick={() => { activate(r); }}
+                    onMouseEnter={() => {
+                      setSelectedIdx(idx);
+                    }}
+                    onClick={() => {
+                      activate(r);
+                    }}
                     className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors ${
                       isActive ? "bg-[rgba(47,107,219,0.10)]" : "hover:bg-surface-hover"
                     }`}
                   >
                     <span className="flex-shrink-0 text-text-secondary">{icon}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13px] font-medium text-text-primary">{label}</div>
+                      <div className="truncate text-[13px] font-medium text-text-primary">
+                        {label}
+                      </div>
                       <div className="truncate font-mono text-[10.5px] text-text-faint">{sub}</div>
                     </div>
                     {isActive && (
@@ -190,7 +204,11 @@ export function CommandPalette({
 
         {/* Footer hints */}
         <div className="flex items-center gap-4 border-t border-border px-4 py-2">
-          {[["↑↓", "navigate"], ["↵", "open"], ["esc", "close"]].map(([key, label]) => (
+          {[
+            ["↑↓", "navigate"],
+            ["↵", "open"],
+            ["esc", "close"],
+          ].map(([key, label]) => (
             <div key={key} className="flex items-center gap-1.5 text-[11px] text-text-faint">
               <kbd className="rounded border border-border-input px-1.5 py-0.5 font-mono text-[10px]">
                 {key}

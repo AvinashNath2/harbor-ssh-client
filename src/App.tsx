@@ -1,7 +1,14 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { reconnect as reconnectApi, stopAllPortForwards, type ConnectArgs, type ConnectResult, type ConnectionProfile, type FileEntry } from "./api";
+import {
+  reconnect as reconnectApi,
+  stopAllPortForwards,
+  type ConnectArgs,
+  type ConnectResult,
+  type ConnectionProfile,
+  type FileEntry,
+} from "./api";
 import { PortForwardPanel } from "./components/PortForwardPanel";
 import { PreviewModal } from "./components/PreviewModal";
 import { SessionLogPage } from "./components/SessionLogPage";
@@ -43,16 +50,24 @@ export default function App() {
   const [prefillFolder, setPrefillFolder] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState<boolean>(() => {
-    try { return localStorage.getItem("harbor.sidebarHidden") === "1"; } catch { return false; }
+    try {
+      return localStorage.getItem("harbor.sidebarHidden") === "1";
+    } catch {
+      return false;
+    }
   });
   const [pwPromptFor, setPwPromptFor] = useState<ConnectionProfile | null>(null);
   const [activeProfile, setActiveProfile] = useState<ConnectionProfile | null>(null);
 
   // Kill the WebKit default context menu ("Inspect Element", "Reload", etc).
   useEffect(() => {
-    function block(e: MouseEvent) { e.preventDefault(); }
+    function block(e: MouseEvent) {
+      e.preventDefault();
+    }
     document.addEventListener("contextmenu", block);
-    return () => { document.removeEventListener("contextmenu", block); };
+    return () => {
+      document.removeEventListener("contextmenu", block);
+    };
   }, []);
 
   const [reconnectStatus, setReconnectStatus] = useState<
@@ -64,7 +79,11 @@ export default function App() {
 
   function toggleSidebar(next: boolean) {
     setSidebarHidden(next);
-    try { localStorage.setItem("harbor.sidebarHidden", next ? "1" : "0"); } catch { /* ignore */ }
+    try {
+      localStorage.setItem("harbor.sidebarHidden", next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
   }
 
   const isConnected = state.status === "connected";
@@ -202,18 +221,28 @@ export default function App() {
   // ping fails, the same reconnect flow that fires from file-op errors kicks
   // in — showing the amber banner and attempting recovery — BEFORE the user
   // clicks anything.
-  useConnectionWatchdog(isConnected, () => { void handleConnectionLost(); });
+  useConnectionWatchdog(isConnected, () => {
+    void handleConnectionLost();
+  });
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {showSessionLog && (
-        <SessionLogPage onClose={() => { setShowSessionLog(false); }} />
+        <SessionLogPage
+          onClose={() => {
+            setShowSessionLog(false);
+          }}
+        />
       )}
       {showImport && (
         <SshConfigImportModal
           existingProfiles={profiles}
-          onImport={(imp) => { void handleImportProfiles(imp); }}
-          onClose={() => { setShowImport(false); }}
+          onImport={(imp) => {
+            void handleImportProfiles(imp);
+          }}
+          onClose={() => {
+            setShowImport(false);
+          }}
         />
       )}
       {pwPromptFor && (
@@ -222,7 +251,9 @@ export default function App() {
           isLoading={isConnecting}
           error={state.status === "error" ? state.error.message : null}
           onSubmit={submitPasswordPrompt}
-          onCancel={() => { setPwPromptFor(null); }}
+          onCancel={() => {
+            setPwPromptFor(null);
+          }}
         />
       )}
       {reconnectStatus.kind === "reconnecting" && (
@@ -240,7 +271,9 @@ export default function App() {
           attempt={0}
           maxAttempts={0}
           reason={reconnectStatus.reason}
-          onDismiss={() => { setReconnectStatus({ kind: "idle" }); }}
+          onDismiss={() => {
+            setReconnectStatus({ kind: "idle" });
+          }}
         />
       )}
       {isConnected ? (
@@ -266,10 +299,14 @@ export default function App() {
           onStarProfile={(p) => {
             void handleStarProfile(p);
           }}
-          onImportSshConfig={() => { setShowImport(true); }}
+          onImportSshConfig={() => {
+            setShowImport(true);
+          }}
           sidebarHidden={sidebarHidden}
           onToggleSidebar={toggleSidebar}
-          onShowLog={() => { setShowSessionLog(true); }}
+          onShowLog={() => {
+            setShowSessionLog(true);
+          }}
         />
       ) : (
         <DisconnectedApp
@@ -298,10 +335,14 @@ export default function App() {
             void handleStarProfile(p);
           }}
           onNewSessionInFolder={openModalForFolder}
-          onImportSshConfig={() => { setShowImport(true); }}
+          onImportSshConfig={() => {
+            setShowImport(true);
+          }}
           sidebarHidden={sidebarHidden}
           onToggleSidebar={toggleSidebar}
-          onShowLog={() => { setShowSessionLog(true); }}
+          onShowLog={() => {
+            setShowSessionLog(true);
+          }}
         />
       )}
     </div>
@@ -373,7 +414,11 @@ function DisconnectedApp({
       />
       <div className="flex min-h-0 flex-1">
         {sidebarHidden ? (
-          <SidebarPeek onShow={() => { onToggleSidebar(false); }} />
+          <SidebarPeek
+            onShow={() => {
+              onToggleSidebar(false);
+            }}
+          />
         ) : (
           <Sidebar
             profiles={profiles}
@@ -385,7 +430,9 @@ function DisconnectedApp({
             onStarProfile={onStarProfile}
             onNewSessionInFolder={onNewSessionInFolder}
             onImportSshConfig={onImportSshConfig}
-            onHide={() => { onToggleSidebar(true); }}
+            onHide={() => {
+              onToggleSidebar(true);
+            }}
           />
         )}
         <main className="flex flex-1 items-center justify-center bg-surface">
@@ -477,8 +524,17 @@ function ConnectedApp({
   onToggleSidebar,
   onShowLog,
 }: ConnectedAppProps) {
-  const { tabs, activeId, activeTab, activateTab, navigateTo, goBack, goForward, closeTab, reload } =
-    useTabs(result.homeDir, onConnectionLost);
+  const {
+    tabs,
+    activeId,
+    activeTab,
+    activateTab,
+    navigateTo,
+    goBack,
+    goForward,
+    closeTab,
+    reload,
+  } = useTabs(result.homeDir, onConnectionLost);
 
   // Phase 4 — Local filesystem
   const localFiles = useLocalFiles();
@@ -499,13 +555,21 @@ function ConnectedApp({
 
   // Resizable panels (persisted per user in localStorage)
   const [sidebarWidth, startSidebarResize] = useResizable(250, "x", {
-    min: 200, max: 400, persistKey: "harbor.sidebarWidth",
+    min: 200,
+    max: 400,
+    persistKey: "harbor.sidebarWidth",
   });
   const [terminalHeight, startTerminalResize] = useResizable(340, "y", {
-    min: 160, max: 700, invert: true, persistKey: "harbor.terminalHeight",
+    min: 160,
+    max: 700,
+    invert: true,
+    persistKey: "harbor.terminalHeight",
   });
   const [detailPanelWidth, startDetailResize] = useResizable(272, "x", {
-    min: 240, max: 500, invert: true, persistKey: "harbor.detailPanelWidth",
+    min: 240,
+    max: 500,
+    invert: true,
+    persistKey: "harbor.detailPanelWidth",
   });
 
   // Session log — creates a DB session on mount, closes it on unmount.
@@ -527,7 +591,9 @@ function ConnectedApp({
       }
     }
     window.addEventListener("keydown", handler);
-    return () => { window.removeEventListener("keydown", handler); };
+    return () => {
+      window.removeEventListener("keydown", handler);
+    };
   }, []);
 
   // Fire a notification when a transfer finishes
@@ -663,7 +729,9 @@ function ConnectedApp({
       {previewEntry && (
         <PreviewModal
           entry={previewEntry}
-          onClose={() => { setPreviewEntry(null); }}
+          onClose={() => {
+            setPreviewEntry(null);
+          }}
           onCommandLogged={logCommand}
         />
       )}
@@ -712,11 +780,16 @@ function ConnectedApp({
         onDelete={() => {
           requestDelete([...selected]);
         }}
-        onDisconnect={() => { void stopAllPortForwards(); onDisconnect(); }}
+        onDisconnect={() => {
+          void stopAllPortForwards();
+          onDisconnect();
+        }}
         onToggleDualPane={() => {
           setDualPane((v) => !v);
         }}
-        onToggleTunnels={() => { setShowTunnels((v) => !v); }}
+        onToggleTunnels={() => {
+          setShowTunnels((v) => !v);
+        }}
         onToggleTerminal={() => {
           setShowTerminal((v) => {
             if (!v) setTerminalEverShown(true);
@@ -730,7 +803,11 @@ function ConnectedApp({
       {/* Main content area */}
       <div className="flex min-h-0 flex-1">
         {sidebarHidden ? (
-          <SidebarPeek onShow={() => { onToggleSidebar(false); }} />
+          <SidebarPeek
+            onShow={() => {
+              onToggleSidebar(false);
+            }}
+          />
         ) : (
           <>
             <Sidebar
@@ -753,7 +830,9 @@ function ConnectedApp({
               onStarProfile={onStarProfile}
               onNewSessionInFolder={openNewSessionInFolder}
               onImportSshConfig={onImportSshConfig}
-              onHide={() => { onToggleSidebar(true); }}
+              onHide={() => {
+                onToggleSidebar(true);
+              }}
             />
             <ResizeHandle axis="x" onMouseDown={startSidebarResize} title="Resize sidebar" />
           </>
@@ -816,32 +895,41 @@ function ConnectedApp({
                   void fileOps.download(paths);
                 }}
                 onReceiveLocalDrop={handleTransferToRemote}
-                onOpenDetail={(path) => { setDetailPanelPath(path); }}
+                onOpenDetail={(path) => {
+                  setDetailPanelPath(path);
+                }}
                 onEditPermissions={(path) => {
                   setDetailPanelPath(path);
                   setEditPermsForPath(path);
                 }}
-                onShowPreview={(entry) => { setPreviewEntry(entry); }}
+                onShowPreview={(entry) => {
+                  setPreviewEntry(entry);
+                }}
                 homeDir={result.homeDir}
               />
-              {detailPanelPath !== null && (() => {
-                const entry = activeTab.entries.find((e) => e.path === detailPanelPath);
-                return entry ? (
-                  <>
-                    <ResizeHandle axis="x" onMouseDown={startDetailResize} title="Resize detail panel" />
-                    <FileDetailPanel
-                      entry={entry}
-                      width={detailPanelWidth}
-                      editPermissionsOnOpen={editPermsForPath === entry.path}
-                      onClose={() => {
-                        setDetailPanelPath(null);
-                        setEditPermsForPath(null);
-                      }}
-                      onCommandLogged={logCommand}
-                    />
-                  </>
-                ) : null;
-              })()}
+              {detailPanelPath !== null &&
+                (() => {
+                  const entry = activeTab.entries.find((e) => e.path === detailPanelPath);
+                  return entry ? (
+                    <>
+                      <ResizeHandle
+                        axis="x"
+                        onMouseDown={startDetailResize}
+                        title="Resize detail panel"
+                      />
+                      <FileDetailPanel
+                        entry={entry}
+                        width={detailPanelWidth}
+                        editPermissionsOnOpen={editPermsForPath === entry.path}
+                        onClose={() => {
+                          setDetailPanelPath(null);
+                          setEditPermsForPath(null);
+                        }}
+                        onCommandLogged={logCommand}
+                      />
+                    </>
+                  ) : null;
+                })()}
             </div>
           </div>
 
@@ -851,8 +939,12 @@ function ConnectedApp({
               <PortForwardPanel
                 tunnels={portForwards.tunnels}
                 tunnelError={portForwards.tunnelError}
-                onAdd={(lp, rh, rp) => { void portForwards.addTunnel(lp, rh, rp); }}
-                onRemove={(id) => { void portForwards.removeTunnel(id); }}
+                onAdd={(lp, rh, rp) => {
+                  void portForwards.addTunnel(lp, rh, rp);
+                }}
+                onRemove={(id) => {
+                  void portForwards.removeTunnel(id);
+                }}
                 onClearError={portForwards.clearTunnelError}
               />
             </div>
@@ -863,7 +955,10 @@ function ConnectedApp({
             <ResizeHandle axis="y" onMouseDown={startTerminalResize} title="Resize terminal" />
           )}
           {(showTerminal || queue.transfers.length > 0) && (
-            <div className="flex flex-none" style={{ height: terminalHeight, background: "#1e2127" }}>
+            <div
+              className="flex flex-none"
+              style={{ height: terminalHeight, background: "#1e2127" }}
+            >
               {/* Transfer panel */}
               {queue.transfers.length > 0 && (
                 <div className="w-64 flex-shrink-0 border-r border-border-raised">
@@ -885,7 +980,9 @@ function ConnectedApp({
                     serverLabel={serverLabel}
                     profiles={profiles}
                     currentHost={result.host}
-                    onClose={() => { setShowTerminal(false); }}
+                    onClose={() => {
+                      setShowTerminal(false);
+                    }}
                     onCommandLogged={logCommand}
                   />
                 </div>
@@ -989,9 +1086,15 @@ function ConnectedApp({
         <CommandPalette
           entries={activeTab.entries}
           profiles={profiles}
-          onNavigate={(path) => { navigateTo(activeId, path); }}
-          onSelectProfile={(p) => { onSelectProfile(p); }}
-          onClose={() => { setShowCommandPalette(false); }}
+          onNavigate={(path) => {
+            navigateTo(activeId, path);
+          }}
+          onSelectProfile={(p) => {
+            onSelectProfile(p);
+          }}
+          onClose={() => {
+            setShowCommandPalette(false);
+          }}
         />
       )}
     </div>

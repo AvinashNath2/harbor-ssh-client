@@ -36,9 +36,7 @@ export function NewSessionModal({
   const [password, setPassword] = useState("");
   const [keyPath, setKeyPath] = useState(initialProfile?.keyPath ?? "~/.ssh/id_rsa");
   const [passphrase, setPassphrase] = useState("");
-  const [saveToFolder, setSaveToFolder] = useState(
-    initialProfile?.folder ?? initialFolder ?? "",
-  );
+  const [saveToFolder, setSaveToFolder] = useState(initialProfile?.folder ?? initialFolder ?? "");
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderDropdownOpen, setFolderDropdownOpen] = useState(false);
@@ -106,7 +104,11 @@ export function NewSessionModal({
     const profile = buildProfile();
     if (!profile) return;
     setSaving(true);
-    try { await onSave(profile); } finally { setSaving(false); }
+    try {
+      await onSave(profile);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleTest() {
@@ -115,7 +117,8 @@ export function NewSessionModal({
       await testConnection(buildConnectArgs());
       setTestState({ status: "ok" });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : (e as { message?: string }).message ?? String(e);
+      const msg =
+        e instanceof Error ? e.message : ((e as { message?: string }).message ?? String(e));
       setTestState({ status: "error", msg });
     }
   }
@@ -182,11 +185,13 @@ export function NewSessionModal({
                   <AlertTriangle size={12} strokeWidth={2} />
                 </span>
                 <div>
-                  <div className="font-semibold">Heads up — only one active connection at a time</div>
+                  <div className="font-semibold">
+                    Heads up — only one active connection at a time
+                  </div>
                   <div className="mt-0.5 text-[11.5px] opacity-90">
                     Connecting to a new server will disconnect you from{" "}
-                    <span className="font-mono">{currentlyConnectedHost}</span>. Terminal
-                    sessions on the current server will also close.
+                    <span className="font-mono">{currentlyConnectedHost}</span>. Terminal sessions
+                    on the current server will also close.
                   </div>
                 </div>
               </div>
@@ -465,10 +470,22 @@ export function NewSessionModal({
                 className="rounded-input px-3 py-2 text-[12px]"
                 style={
                   testState.status === "ok"
-                    ? { background: "rgba(31,157,99,0.10)", color: "#177a4c", border: "1px solid rgba(31,157,99,0.28)" }
+                    ? {
+                        background: "rgba(31,157,99,0.10)",
+                        color: "#177a4c",
+                        border: "1px solid rgba(31,157,99,0.28)",
+                      }
                     : testState.status === "error"
-                      ? { background: "rgba(229,83,75,0.10)", color: "#b33c34", border: "1px solid rgba(229,83,75,0.3)" }
-                      : { background: "rgba(63,123,224,0.10)", color: "#2f6bdb", border: "1px solid rgba(63,123,224,0.28)" }
+                      ? {
+                          background: "rgba(229,83,75,0.10)",
+                          color: "#b33c34",
+                          border: "1px solid rgba(229,83,75,0.3)",
+                        }
+                      : {
+                          background: "rgba(63,123,224,0.10)",
+                          color: "#2f6bdb",
+                          border: "1px solid rgba(63,123,224,0.28)",
+                        }
                 }
               >
                 {testState.status === "testing" && "Testing connection…"}
@@ -488,7 +505,9 @@ export function NewSessionModal({
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => { void handleTest(); }}
+                onClick={() => {
+                  void handleTest();
+                }}
                 disabled={!canConnect || testState.status === "testing" || isLoading}
                 className="rounded-input border border-border-input bg-surface-chip px-3 py-2 text-[12.5px] font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -511,7 +530,9 @@ export function NewSessionModal({
               {willSave && (
                 <button
                   type="button"
-                  onClick={() => { void handleSaveOnly(); }}
+                  onClick={() => {
+                    void handleSaveOnly();
+                  }}
                   disabled={!isDirty || saving || !host.trim()}
                   className="rounded-input border border-accent-dark px-4 py-2 text-[13px] font-semibold text-accent-dark transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
                   title={isDirty ? "Save changes" : "No changes to save"}

@@ -12,7 +12,13 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { deleteLocalPath, listLocalFolder, renameLocalPath, revealInFinder, type LocalFileEntry } from "../api";
+import {
+  deleteLocalPath,
+  listLocalFolder,
+  renameLocalPath,
+  revealInFinder,
+  type LocalFileEntry,
+} from "../api";
 import { useElementWidth } from "../hooks/useElementWidth";
 import type { LocalTab } from "../hooks/useLocalFiles";
 import { fileIcon, fileTypeLabel } from "../utils/fileType";
@@ -82,7 +88,9 @@ export function LocalBrowser({
   const [renameError, setRenameError] = useState<string | null>(null);
 
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
-  const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
+  const closeCtxMenu = useCallback(() => {
+    setCtxMenu(null);
+  }, []);
 
   const [pendingDelete, setPendingDelete] = useState<string[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -112,7 +120,9 @@ export function LocalBrowser({
       }
     }
     window.addEventListener("keydown", handler);
-    return () => { window.removeEventListener("keydown", handler); };
+    return () => {
+      window.removeEventListener("keydown", handler);
+    };
   }, [tab.path]);
 
   // Auto-focus path input when editing mode activates.
@@ -122,41 +132,66 @@ export function LocalBrowser({
 
   // Path validation — 400ms debounce.
   useEffect(() => {
-    if (!editingPath) { setPathValid(null); return; }
+    if (!editingPath) {
+      setPathValid(null);
+      return;
+    }
     const raw = pathInput.trim();
-    if (!raw) { setPathValid(null); return; }
+    if (!raw) {
+      setPathValid(null);
+      return;
+    }
     if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current);
     pathValidTimerRef.current = setTimeout(() => {
       const lastSlash = raw.lastIndexOf("/");
       const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
       const base = raw.endsWith("/") ? "" : raw.slice(lastSlash + 1);
       const checkDir = raw.endsWith("/") ? raw.replace(/\/$/, "") || "/" : dir;
-      void listLocalFolder(checkDir).then((entries) => {
-        setPathValid(!base || entries.some((en) => en.name === base));
-      }).catch(() => { setPathValid(false); });
+      void listLocalFolder(checkDir)
+        .then((entries) => {
+          setPathValid(!base || entries.some((en) => en.name === base));
+        })
+        .catch(() => {
+          setPathValid(false);
+        });
     }, 400);
-    return () => { if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current); };
+    return () => {
+      if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current);
+    };
   }, [pathInput, editingPath]);
 
   // Autocomplete — 200ms debounce.
   useEffect(() => {
-    if (!editingPath) { setAcItems([]); setAcIndex(-1); return; }
+    if (!editingPath) {
+      setAcItems([]);
+      setAcIndex(-1);
+      return;
+    }
     const raw = pathInput.trim();
-    if (!raw) { setAcItems([]); return; }
+    if (!raw) {
+      setAcItems([]);
+      return;
+    }
     if (acTimerRef.current) clearTimeout(acTimerRef.current);
     acTimerRef.current = setTimeout(() => {
       const lastSlash = raw.lastIndexOf("/");
       const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
       const prefix = raw.slice(lastSlash + 1).toLowerCase();
-      void listLocalFolder(dir).then((entries) => {
-        const matches = entries
-          .filter((en) => en.kind === "directory" && en.name.toLowerCase().startsWith(prefix))
-          .map((en) => (dir === "/" ? "/" + en.name : dir + "/" + en.name));
-        setAcItems(matches.slice(0, 12));
-        setAcIndex(-1);
-      }).catch(() => { setAcItems([]); });
+      void listLocalFolder(dir)
+        .then((entries) => {
+          const matches = entries
+            .filter((en) => en.kind === "directory" && en.name.toLowerCase().startsWith(prefix))
+            .map((en) => (dir === "/" ? "/" + en.name : dir + "/" + en.name));
+          setAcItems(matches.slice(0, 12));
+          setAcIndex(-1);
+        })
+        .catch(() => {
+          setAcItems([]);
+        });
     }, 200);
-    return () => { if (acTimerRef.current) clearTimeout(acTimerRef.current); };
+    return () => {
+      if (acTimerRef.current) clearTimeout(acTimerRef.current);
+    };
   }, [pathInput, editingPath]);
 
   function commitPath(e: React.SyntheticEvent) {
@@ -179,9 +214,7 @@ export function LocalBrowser({
   // Sort + filter.
   const visibleEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const filtered = q
-      ? tab.entries.filter((e) => e.name.toLowerCase().includes(q))
-      : tab.entries;
+    const filtered = q ? tab.entries.filter((e) => e.name.toLowerCase().includes(q)) : tab.entries;
 
     const mul = sortDir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => {
@@ -204,7 +237,10 @@ export function LocalBrowser({
 
   function toggleSort(col: SortCol) {
     if (col === sortCol) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortCol(col); setSortDir("asc"); }
+    else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
   }
 
   // Click / shift-click selection.
@@ -252,21 +288,27 @@ export function LocalBrowser({
         label: "Reveal in Finder",
         icon: <ExternalLink size={12} strokeWidth={2} />,
         disabled: !single,
-        onClick: () => { void revealInFinder(ctx.entry.path); },
+        onClick: () => {
+          void revealInFinder(ctx.entry.path);
+        },
       },
       { label: "---", onClick: () => undefined },
       {
         label: "Copy path",
         icon: <Copy size={12} strokeWidth={2} />,
         disabled: !single,
-        onClick: () => { void navigator.clipboard.writeText(ctx.entry.path); },
+        onClick: () => {
+          void navigator.clipboard.writeText(ctx.entry.path);
+        },
       },
       { label: "---", onClick: () => undefined },
       {
         label: "Rename",
         icon: <Pencil size={11} strokeWidth={2} />,
         disabled: !single,
-        onClick: () => { setRenamingPath(ctx.paths[0] ?? null); },
+        onClick: () => {
+          setRenamingPath(ctx.paths[0] ?? null);
+        },
       },
       { label: "---", onClick: () => undefined },
       {
@@ -325,7 +367,9 @@ export function LocalBrowser({
       setIsDropTarget(true);
     }
   }
-  function handleDragLeave() { setIsDropTarget(false); }
+  function handleDragLeave() {
+    setIsDropTarget(false);
+  }
   function handleDrop(e: React.DragEvent) {
     setIsDropTarget(false);
     const raw = e.dataTransfer.getData(HARBOR_REMOTE_MIME);
@@ -335,7 +379,9 @@ export function LocalBrowser({
       const paths: unknown = JSON.parse(raw);
       if (Array.isArray(paths))
         onReceiveRemoteDrop(paths.filter((p): p is string => typeof p === "string"));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   const folders = tab.entries.filter((e) => e.kind === "directory").length;
@@ -361,12 +407,20 @@ export function LocalBrowser({
         </span>
 
         {/* History navigation */}
-        <button onClick={onGoBack} disabled={!canGoBack} title="Back"
-          className="text-text-faint transition-colors hover:text-text-secondary disabled:opacity-30">
+        <button
+          onClick={onGoBack}
+          disabled={!canGoBack}
+          title="Back"
+          className="text-text-faint transition-colors hover:text-text-secondary disabled:opacity-30"
+        >
           <ArrowLeft size={13} strokeWidth={2} />
         </button>
-        <button onClick={onGoForward} disabled={!canGoForward} title="Forward"
-          className="text-text-faint transition-colors hover:text-text-secondary disabled:opacity-30">
+        <button
+          onClick={onGoForward}
+          disabled={!canGoForward}
+          title="Forward"
+          className="text-text-faint transition-colors hover:text-text-secondary disabled:opacity-30"
+        >
           <ArrowRight size={13} strokeWidth={2} />
         </button>
 
@@ -377,17 +431,40 @@ export function LocalBrowser({
               ref={pathInputRef}
               type="text"
               value={pathInput}
-              onChange={(e) => { setPathInput(e.target.value); }}
-              onBlur={() => { setTimeout(() => { setEditingPath(false); setAcItems([]); setPathValid(null); }, 120); }}
+              onChange={(e) => {
+                setPathInput(e.target.value);
+              }}
+              onBlur={() => {
+                setTimeout(() => {
+                  setEditingPath(false);
+                  setAcItems([]);
+                  setPathValid(null);
+                }, 120);
+              }}
               onKeyDown={(e) => {
-                if (e.key === "Escape") { setEditingPath(false); setAcItems([]); return; }
+                if (e.key === "Escape") {
+                  setEditingPath(false);
+                  setAcItems([]);
+                  return;
+                }
                 if (acItems.length > 0) {
-                  if (e.key === "ArrowDown") { e.preventDefault(); setAcIndex((i) => Math.min(i + 1, acItems.length - 1)); return; }
-                  if (e.key === "ArrowUp") { e.preventDefault(); setAcIndex((i) => Math.max(i - 1, -1)); return; }
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setAcIndex((i) => Math.min(i + 1, acItems.length - 1));
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setAcIndex((i) => Math.max(i - 1, -1));
+                    return;
+                  }
                   if (e.key === "Tab" || (e.key === "Enter" && acIndex >= 0)) {
                     e.preventDefault();
                     const chosen = acItems[acIndex >= 0 ? acIndex : 0];
-                    if (chosen) { setPathInput(chosen + "/"); setAcIndex(-1); }
+                    if (chosen) {
+                      setPathInput(chosen + "/");
+                      setAcIndex(-1);
+                    }
                     return;
                   }
                 }
@@ -403,22 +480,35 @@ export function LocalBrowser({
             <PathAutocomplete
               items={acItems}
               activeIndex={acIndex}
-              onSelect={(p) => { setPathInput(p); setAcItems([]); setAcIndex(-1); pathInputRef.current?.focus(); }}
+              onSelect={(p) => {
+                setPathInput(p);
+                setAcItems([]);
+                setAcIndex(-1);
+                pathInputRef.current?.focus();
+              }}
             />
           </form>
         ) : (
           <LocalBreadcrumb
             path={tab.path}
             onNavigate={onNavigate}
-            onEdit={() => { setPathInput(tab.path); setEditingPath(true); }}
+            onEdit={() => {
+              setPathInput(tab.path);
+              setEditingPath(true);
+            }}
           />
         )}
 
         <button
-          onClick={() => { onSelectionChange(new Set()); onNavigate(homeDir); }}
+          onClick={() => {
+            onSelectionChange(new Set());
+            onNavigate(homeDir);
+          }}
           title="Go to home directory"
           className="flex-shrink-0 rounded-[5px] px-[6px] py-[2px] font-mono text-[10px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
-        >~</button>
+        >
+          ~
+        </button>
 
         <div className="flex-1" />
 
@@ -428,23 +518,36 @@ export function LocalBrowser({
           <input
             ref={searchRef}
             value={search}
-            onChange={(e) => { setSearch(e.target.value); }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Escape") { setSearch(""); (e.target as HTMLInputElement).blur(); }
+              if (e.key === "Escape") {
+                setSearch("");
+                (e.target as HTMLInputElement).blur();
+              }
             }}
             placeholder="Filter…"
             className="w-[100px] bg-transparent text-[11.5px] text-text-primary outline-none placeholder:text-text-faint"
           />
           {search && (
-            <button onClick={() => { setSearch(""); }} title="Clear filter"
-              className="flex h-4 w-4 items-center justify-center text-text-faint hover:text-text-secondary">
+            <button
+              onClick={() => {
+                setSearch("");
+              }}
+              title="Clear filter"
+              className="flex h-4 w-4 items-center justify-center text-text-faint hover:text-text-secondary"
+            >
               <X size={10} strokeWidth={2.4} />
             </button>
           )}
         </div>
 
-        <button onClick={onReload} title="Reload (⌘R)"
-          className="text-text-faint transition-colors hover:text-text-secondary">
+        <button
+          onClick={onReload}
+          title="Reload (⌘R)"
+          className="text-text-faint transition-colors hover:text-text-secondary"
+        >
           <RefreshCw size={13} strokeWidth={2} />
         </button>
       </div>
@@ -456,15 +559,32 @@ export function LocalBrowser({
       >
         <span />
         <SortHeader col="name" label="Name" active={sortCol} dir={sortDir} onClick={toggleSort} />
-        {!compact && <SortHeader col="type" label="Type" active={sortCol} dir={sortDir} onClick={toggleSort} />}
-        <SortHeader col="size" label="Size" active={sortCol} dir={sortDir} onClick={toggleSort} align="right" />
-        <SortHeader col="modified" label="Modified" active={sortCol} dir={sortDir} onClick={toggleSort} />
+        {!compact && (
+          <SortHeader col="type" label="Type" active={sortCol} dir={sortDir} onClick={toggleSort} />
+        )}
+        <SortHeader
+          col="size"
+          label="Size"
+          active={sortCol}
+          dir={sortDir}
+          onClick={toggleSort}
+          align="right"
+        />
+        <SortHeader
+          col="modified"
+          label="Modified"
+          active={sortCol}
+          dir={sortDir}
+          onClick={toggleSort}
+        />
       </div>
 
       {/* Content */}
       <div
         className="min-h-0 flex-1 overflow-auto"
-        onClick={() => { onSelectionChange(new Set()); }}
+        onClick={() => {
+          onSelectionChange(new Set());
+        }}
       >
         {tab.status === "loading" && (
           <div className="flex h-full items-center justify-center text-[13px] text-text-faint">
@@ -477,7 +597,10 @@ export function LocalBrowser({
             <div className="max-w-sm text-center">
               <p className="text-[13px] font-medium text-danger">Cannot open directory</p>
               <p className="mt-1 font-mono text-[11px] text-text-tertiary">{tab.error}</p>
-              <button onClick={onReload} className="mt-3 text-[12px] text-accent-dark hover:underline">
+              <button
+                onClick={onReload}
+                className="mt-3 text-[12px] text-accent-dark hover:underline"
+              >
                 Try again
               </button>
             </div>
@@ -489,8 +612,14 @@ export function LocalBrowser({
             {renameError && (
               <div className="flex items-center justify-between gap-3 border-b border-danger/20 bg-danger/10 px-4 py-2">
                 <span className="text-[12px] text-danger">Rename failed: {renameError}</span>
-                <button onClick={() => { setRenameError(null); }}
-                  className="text-[11px] text-danger/60 hover:text-danger">✕</button>
+                <button
+                  onClick={() => {
+                    setRenameError(null);
+                  }}
+                  className="text-[11px] text-danger/60 hover:text-danger"
+                >
+                  ✕
+                </button>
               </div>
             )}
 
@@ -520,9 +649,15 @@ export function LocalBrowser({
                 isRenaming={renamingPath === entry.path}
                 compact={compact}
                 gridCols={gridCols}
-                onClick={(e) => { handleRowClick(e, entry, idx); }}
-                onDoubleClick={() => { handleRowDoubleClick(entry); }}
-                onContextMenu={(e) => { handleRowContextMenu(e, entry); }}
+                onClick={(e) => {
+                  handleRowClick(e, entry, idx);
+                }}
+                onDoubleClick={() => {
+                  handleRowDoubleClick(entry);
+                }}
+                onContextMenu={(e) => {
+                  handleRowContextMenu(e, entry);
+                }}
                 onRenameCommit={(oldPath, newName) => {
                   setRenamingPath(null);
                   if (newName) void handleRename(oldPath, newName);
@@ -544,8 +679,12 @@ export function LocalBrowser({
             {tab.entries.length > 0 && visibleEntries.length === 0 && (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-[13px] text-text-faint">
                 <span>No matches for &ldquo;{search}&rdquo;</span>
-                <button onClick={() => { setSearch(""); }}
-                  className="text-[11.5px] text-accent-dark hover:underline">
+                <button
+                  onClick={() => {
+                    setSearch("");
+                  }}
+                  className="text-[11.5px] text-accent-dark hover:underline"
+                >
                   Clear filter
                 </button>
               </div>
@@ -594,7 +733,9 @@ export function LocalBrowser({
           </span>
           {selected.size > 0 && (
             <button
-              onClick={() => { onTransferToRemote([...selected]); }}
+              onClick={() => {
+                onTransferToRemote([...selected]);
+              }}
               className="rounded-[6px] px-2.5 py-[3px] text-[11px] font-semibold text-white transition-colors"
               style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
             >
@@ -627,7 +768,10 @@ function LocalBreadcrumb({
       className="group flex min-w-0 flex-1 cursor-text items-center gap-[5px] font-mono text-[12px]"
     >
       <button
-        onClick={(e) => { e.stopPropagation(); onNavigate("/"); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onNavigate("/");
+        }}
         className="flex-shrink-0 text-text-faint transition-colors hover:text-text-secondary"
       >
         /
@@ -639,7 +783,10 @@ function LocalBreadcrumb({
           <span key={segPath} className="flex min-w-0 items-center gap-[5px]">
             <span className="flex-shrink-0 text-text-faint">/</span>
             <button
-              onClick={(e) => { e.stopPropagation(); onNavigate(segPath); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigate(segPath);
+              }}
               className={`truncate transition-colors hover:text-text-primary ${
                 isLast ? "text-text-primary" : "text-text-secondary"
               }`}
@@ -673,17 +820,20 @@ function SortHeader({
   const isActive = col === active;
   return (
     <button
-      onClick={() => { onClick(col); }}
+      onClick={() => {
+        onClick(col);
+      }}
       className={`flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-[0.5px] transition-colors hover:text-text-secondary ${
         isActive ? "text-accent-dark" : "text-text-tertiary"
       } ${align === "right" ? "justify-end" : ""}`}
     >
       {label}
-      {isActive && (
-        dir === "asc"
-          ? <ChevronUp size={9} strokeWidth={2.5} />
-          : <ChevronDown size={9} strokeWidth={2.5} />
-      )}
+      {isActive &&
+        (dir === "asc" ? (
+          <ChevronUp size={9} strokeWidth={2.5} />
+        ) : (
+          <ChevronDown size={9} strokeWidth={2.5} />
+        ))}
     </button>
   );
 }
@@ -730,9 +880,16 @@ function LocalRow({
     <div
       draggable={!isRenaming}
       onDragStart={onDragStart}
-      onClick={(e) => { e.stopPropagation(); if (!isRenaming) onClick(e); }}
-      onDoubleClick={() => { if (!isRenaming) onDoubleClick(); }}
-      onContextMenu={(e) => { if (!isRenaming) onContextMenu(e); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!isRenaming) onClick(e);
+      }}
+      onDoubleClick={() => {
+        if (!isRenaming) onDoubleClick();
+      }}
+      onContextMenu={(e) => {
+        if (!isRenaming) onContextMenu(e);
+      }}
       className={`grid select-none items-center gap-3 border-b border-border-subtle px-3.5 transition-colors ${
         isDir && !isRenaming ? "cursor-pointer" : "cursor-default"
       } ${isSelected ? "bg-accent/[0.09]" : "hover:bg-surface-hover"}`}
@@ -750,7 +907,9 @@ function LocalRow({
         <input
           ref={renameRef}
           defaultValue={entry.name}
-          onClick={(e) => { e.stopPropagation(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               onRenameCommit(entry.path, (e.target as HTMLInputElement).value.trim());
@@ -771,7 +930,9 @@ function LocalRow({
           style={{ height: "22px" }}
         />
       ) : (
-        <span className={`truncate text-[12.5px] text-text-primary ${isDir ? "font-semibold" : ""}`}>
+        <span
+          className={`truncate text-[12.5px] text-text-primary ${isDir ? "font-semibold" : ""}`}
+        >
           {entry.name}
         </span>
       )}
@@ -802,7 +963,9 @@ function formatSize(bytes: number | null): string {
 function formatDate(ts: number | null): string {
   if (ts === null) return "—";
   return new Date(ts * 1000).toLocaleDateString(undefined, {
-    month: "short", day: "numeric", year: "numeric",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
@@ -821,12 +984,16 @@ function PathAutocomplete({
   return (
     <div
       className="absolute left-0 top-full z-50 mt-0.5 max-h-[240px] w-full overflow-auto rounded-[10px] border border-border-raised bg-surface-pane py-1 shadow-[0_4px_24px_rgba(0,0,0,0.14)]"
-      onMouseDown={(e) => { e.preventDefault(); }}
+      onMouseDown={(e) => {
+        e.preventDefault();
+      }}
     >
       {items.map((item, i) => (
         <button
           key={item}
-          onMouseDown={() => { onSelect(item + "/"); }}
+          onMouseDown={() => {
+            onSelect(item + "/");
+          }}
           className={`block w-full truncate px-3 py-[5px] text-left font-mono text-[12px] transition-colors ${
             i === activeIndex
               ? "bg-accent/[0.09] text-text-primary"

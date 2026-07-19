@@ -46,14 +46,18 @@ export function useConnectionWatchdog(enabled: boolean, onDrop: () => void) {
       void ping();
     }
 
-    function onFocus() { pingIfDueToFocus(); }
+    function onFocus() {
+      pingIfDueToFocus();
+    }
     function onVisibility() {
       if (document.visibilityState === "visible") pingIfDueToFocus();
     }
 
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
-    const interval = window.setInterval(() => { void ping(); }, IDLE_PING_INTERVAL_MS);
+    const interval = window.setInterval(() => {
+      void ping();
+    }, IDLE_PING_INTERVAL_MS);
 
     return () => {
       cancelled = true;

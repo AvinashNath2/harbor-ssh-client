@@ -29,8 +29,12 @@ export function ResizeHandle({ axis, onMouseDown, title }: ResizeHandleProps) {
         style={{
           background: "transparent",
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(63,123,224,0.35)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(63,123,224,0.35)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+        }}
       />
     </div>
   );

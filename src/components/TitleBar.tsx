@@ -1,12 +1,4 @@
-import {
-  AlertTriangle,
-  Bell,
-  CheckCircle2,
-  Plus,
-  X,
-  XCircle,
-  Zap,
-} from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, Plus, X, XCircle, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AppNotification } from "../hooks/useNotifications";
 import type { Tab } from "../hooks/useTabs";
@@ -63,8 +55,12 @@ export function TitleBar({
               key={tab.id}
               tab={tab}
               isActive={tab.id === activeId}
-              onActivate={() => { onActivate(tab.id); }}
-              onClose={() => { onClose(tab.id); }}
+              onActivate={() => {
+                onActivate(tab.id);
+              }}
+              onClose={() => {
+                onClose(tab.id);
+              }}
               canClose={tabs.length > 1}
             />
           ))}
@@ -134,7 +130,9 @@ function NotificationBell({
       }
     }
     document.addEventListener("mousedown", handleOutside);
-    return () => { document.removeEventListener("mousedown", handleOutside); };
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+    };
   }, [open]);
 
   function toggle() {

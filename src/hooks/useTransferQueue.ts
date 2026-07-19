@@ -106,49 +106,43 @@ export function useTransferQueue() {
     }
   }
 
-  const enqueueDownload = useCallback(
-    (remotePath: string, localPath: string, name: string) => {
-      const id = crypto.randomUUID();
-      const transfer: Transfer = {
-        id,
-        name,
-        direction: "download",
-        status: "pending",
-        transferred: 0,
-        total: 0,
-        error: null,
-        localPath,
-        remotePath,
-      };
-      enqueue({
-        transfer,
-        start: () => downloadFileQueued(id, remotePath, localPath),
-      });
-    },
-    [],
-  );
+  const enqueueDownload = useCallback((remotePath: string, localPath: string, name: string) => {
+    const id = crypto.randomUUID();
+    const transfer: Transfer = {
+      id,
+      name,
+      direction: "download",
+      status: "pending",
+      transferred: 0,
+      total: 0,
+      error: null,
+      localPath,
+      remotePath,
+    };
+    enqueue({
+      transfer,
+      start: () => downloadFileQueued(id, remotePath, localPath),
+    });
+  }, []);
 
-  const enqueueUpload = useCallback(
-    (localPath: string, remotePath: string, name: string) => {
-      const id = crypto.randomUUID();
-      const transfer: Transfer = {
-        id,
-        name,
-        direction: "upload",
-        status: "pending",
-        transferred: 0,
-        total: 0,
-        error: null,
-        localPath,
-        remotePath,
-      };
-      enqueue({
-        transfer,
-        start: () => uploadFileQueued(id, localPath, remotePath),
-      });
-    },
-    [],
-  );
+  const enqueueUpload = useCallback((localPath: string, remotePath: string, name: string) => {
+    const id = crypto.randomUUID();
+    const transfer: Transfer = {
+      id,
+      name,
+      direction: "upload",
+      status: "pending",
+      transferred: 0,
+      total: 0,
+      error: null,
+      localPath,
+      remotePath,
+    };
+    enqueue({
+      transfer,
+      start: () => uploadFileQueued(id, localPath, remotePath),
+    });
+  }, []);
 
   const cancel = useCallback((id: string) => {
     // Remove from the waiting queue immediately.
@@ -178,7 +172,9 @@ export function useTransferQueue() {
     const timer = setTimeout(() => {
       setTransfers((prev) => prev.filter((t) => t.status === "pending" || t.status === "active"));
     }, 5000);
-    return () => { clearTimeout(timer); };
+    return () => {
+      clearTimeout(timer);
+    };
   }, [transfers, activeCount, pendingCount]);
 
   return {

@@ -84,48 +84,100 @@ type Category =
 
 const CATEGORY_OF_EXT: Record<string, Category> = {
   // images
-  png: "image", jpg: "image", jpeg: "image", gif: "image", svg: "image",
-  webp: "image", bmp: "image", ico: "image",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  gif: "image",
+  svg: "image",
+  webp: "image",
+  bmp: "image",
+  ico: "image",
   // code
-  js: "code", ts: "code", tsx: "code", jsx: "code", py: "code",
-  rs: "code", go: "code", java: "code", rb: "code", php: "code",
-  c: "code", cpp: "code", h: "code", hpp: "code", cs: "code",
-  swift: "code", kt: "code", scala: "code", clj: "code",
+  js: "code",
+  ts: "code",
+  tsx: "code",
+  jsx: "code",
+  py: "code",
+  rs: "code",
+  go: "code",
+  java: "code",
+  rb: "code",
+  php: "code",
+  c: "code",
+  cpp: "code",
+  h: "code",
+  hpp: "code",
+  cs: "code",
+  swift: "code",
+  kt: "code",
+  scala: "code",
+  clj: "code",
   // docs
-  md: "doc", txt: "doc", pdf: "doc", rtf: "doc", doc: "doc", docx: "doc",
+  md: "doc",
+  txt: "doc",
+  pdf: "doc",
+  rtf: "doc",
+  doc: "doc",
+  docx: "doc",
   // data
-  json: "data", yaml: "data", yml: "data", toml: "data", xml: "data",
-  csv: "data", tsv: "data", sql: "data",
+  json: "data",
+  yaml: "data",
+  yml: "data",
+  toml: "data",
+  xml: "data",
+  csv: "data",
+  tsv: "data",
+  sql: "data",
   // archives
-  zip: "archive", tar: "archive", gz: "archive", tgz: "archive",
-  bz2: "archive", "7z": "archive", rar: "archive", jar: "archive",
+  zip: "archive",
+  tar: "archive",
+  gz: "archive",
+  tgz: "archive",
+  bz2: "archive",
+  "7z": "archive",
+  rar: "archive",
+  jar: "archive",
   // shell
-  sh: "shell", bash: "shell", zsh: "shell", fish: "shell",
+  sh: "shell",
+  bash: "shell",
+  zsh: "shell",
+  fish: "shell",
   // config
-  conf: "config", config: "config", ini: "config", env: "config",
+  conf: "config",
+  config: "config",
+  ini: "config",
+  env: "config",
   properties: "config",
   // secrets
-  key: "secret", pem: "secret", crt: "secret", cer: "secret", pub: "secret",
+  key: "secret",
+  pem: "secret",
+  crt: "secret",
+  cer: "secret",
+  pub: "secret",
   // log
   log: "log",
   // stylesheets → code
-  css: "code", scss: "code", sass: "code", html: "code", htm: "code",
+  css: "code",
+  scss: "code",
+  sass: "code",
+  html: "code",
+  htm: "code",
 };
 
 const CATEGORY_COLOR: Record<Category, { bg: string; fg: string; glyph: string }> = {
-  folder:  { bg: "#e0a53c", fg: "#5c3d0e", glyph: "▤" },   // amber
-  symlink: { bg: "#8a8578", fg: "#ffffff", glyph: "↪" },   // gray
-  image:   { bg: "#e5534b", fg: "#ffffff", glyph: "▧" },   // red-orange
-  code:    { bg: "#1f9d63", fg: "#ffffff", glyph: "<>" },  // green
-  doc:     { bg: "#3f7be0", fg: "#ffffff", glyph: "¶" },   // blue
-  data:    { bg: "#e0a53c", fg: "#5c3d0e", glyph: "{}" },  // yellow
-  archive: { bg: "#9b59b6", fg: "#ffffff", glyph: "⬒" },   // purple
-  shell:   { bg: "#111214", fg: "#40c882", glyph: "$_" },  // black/green
-  config:  { bg: "#52524e", fg: "#e0ddd8", glyph: "⚙" },   // dark gray
-  secret:  { bg: "#e0a53c", fg: "#5c3d0e", glyph: "⚿" },   // amber key
-  log:     { bg: "#8a8578", fg: "#ffffff", glyph: "≡" },   // gray
-  binary:  { bg: "#52524e", fg: "#e0ddd8", glyph: "⬢" },
-  file:    { bg: "#c8c4bc", fg: "#5c5548", glyph: "▬" },   // beige default
+  folder: { bg: "#e0a53c", fg: "#5c3d0e", glyph: "▤" }, // amber
+  symlink: { bg: "#8a8578", fg: "#ffffff", glyph: "↪" }, // gray
+  image: { bg: "#e5534b", fg: "#ffffff", glyph: "▧" }, // red-orange
+  code: { bg: "#1f9d63", fg: "#ffffff", glyph: "<>" }, // green
+  doc: { bg: "#3f7be0", fg: "#ffffff", glyph: "¶" }, // blue
+  data: { bg: "#e0a53c", fg: "#5c3d0e", glyph: "{}" }, // yellow
+  archive: { bg: "#9b59b6", fg: "#ffffff", glyph: "⬒" }, // purple
+  shell: { bg: "#111214", fg: "#40c882", glyph: "$_" }, // black/green
+  config: { bg: "#52524e", fg: "#e0ddd8", glyph: "⚙" }, // dark gray
+  secret: { bg: "#e0a53c", fg: "#5c3d0e", glyph: "⚿" }, // amber key
+  log: { bg: "#8a8578", fg: "#ffffff", glyph: "≡" }, // gray
+  binary: { bg: "#52524e", fg: "#e0ddd8", glyph: "⬢" },
+  file: { bg: "#c8c4bc", fg: "#5c5548", glyph: "▬" }, // beige default
 };
 
 export interface FileIconStyle {

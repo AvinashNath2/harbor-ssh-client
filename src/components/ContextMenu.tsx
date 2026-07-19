@@ -74,7 +74,9 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
             }`}
           >
             {item.icon != null && (
-              <span className="flex w-4 flex-shrink-0 items-center justify-center">{item.icon}</span>
+              <span className="flex w-4 flex-shrink-0 items-center justify-center">
+                {item.icon}
+              </span>
             )}
             {item.label}
           </button>

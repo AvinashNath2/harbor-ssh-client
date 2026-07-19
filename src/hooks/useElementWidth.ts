@@ -14,7 +14,9 @@ export function useElementWidth<T extends HTMLElement = HTMLDivElement>() {
       setWidth(entries[0].contentRect.width);
     });
     obs.observe(el);
-    return () => { obs.disconnect(); };
+    return () => {
+      obs.disconnect();
+    };
   }, []);
 
   return [ref, width] as const;

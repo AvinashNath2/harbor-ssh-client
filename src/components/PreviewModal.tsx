@@ -196,7 +196,9 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
       }
     }
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); };
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [closeWithGuard, state, mode, isDirty, saving, query]);
 
@@ -221,13 +223,19 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
     ta.scrollTop = Math.max(0, ta.scrollTop);
   }, [mode, matchCount, clampedMatchIdx, matches]);
 
-  function nextMatch() { if (matchCount > 0) setMatchIdx((i) => (i + 1) % matchCount); }
+  function nextMatch() {
+    if (matchCount > 0) setMatchIdx((i) => (i + 1) % matchCount);
+  }
   function prevMatch() {
     if (matchCount > 0) setMatchIdx((i) => (i - 1 + matchCount) % matchCount);
   }
 
   async function copyToClipboard() {
-    try { await navigator.clipboard.writeText(displayText); } catch { /* ignore */ }
+    try {
+      await navigator.clipboard.writeText(displayText);
+    } catch {
+      /* ignore */
+    }
   }
 
   async function handleSave() {
@@ -287,7 +295,8 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
   function renderHighlightedText() {
     if (matchCount === 0) {
       return displayText.length > 200000
-        ? displayText.slice(0, 200000) + "\n\n… (truncated at 200 000 characters — download to see the full file)"
+        ? displayText.slice(0, 200000) +
+            "\n\n… (truncated at 200 000 characters — download to see the full file)"
         : displayText;
     }
     const nodes: React.ReactNode[] = [];
@@ -298,7 +307,13 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
       nodes.push(
         <mark
           key={`m-${idx.toString()}`}
-          ref={isActive ? (el) => { activeMarkRef.current = el; } : undefined}
+          ref={
+            isActive
+              ? (el) => {
+                  activeMarkRef.current = el;
+                }
+              : undefined
+          }
           style={{
             background: isActive ? "#e0a53c" : "rgba(224,165,60,0.35)",
             color: isActive ? "#1a1b1e" : "inherit",
@@ -319,7 +334,9 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
     <div
       className="absolute inset-0 z-[60] flex items-center justify-center"
       style={{ background: "rgba(20,18,15,0.62)", backdropFilter: "blur(4px)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) closeWithGuard(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) closeWithGuard();
+      }}
     >
       <div
         className="flex h-[90vh] w-[92vw] max-w-[1400px] flex-col overflow-hidden rounded-modal border border-border-raised bg-surface-pane"
@@ -373,7 +390,9 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
         {truncated && state === "text" && (
           <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-5 py-2 text-[12px] text-[#8a6020]">
             <span className="font-semibold">⚠ File truncated</span>
-            <span className="text-[#8a6020]/80">— showing first 50 KB only. Download the file to view or edit it fully.</span>
+            <span className="text-[#8a6020]/80">
+              — showing first 50 KB only. Download the file to view or edit it fully.
+            </span>
           </div>
         )}
 
@@ -388,9 +407,16 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
               <input
                 ref={searchInputRef}
                 value={query}
-                onChange={(e) => { setQuery(e.target.value); setMatchIdx(0); }}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setMatchIdx(0);
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); if (e.shiftKey) prevMatch(); else nextMatch(); }
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (e.shiftKey) prevMatch();
+                    else nextMatch();
+                  }
                 }}
                 placeholder="Find in file (⌘F)"
                 className="flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-faint"
@@ -419,7 +445,9 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
                     <ChevronDown size={12} strokeWidth={2.2} />
                   </button>
                   <button
-                    onClick={() => { setQuery(""); }}
+                    onClick={() => {
+                      setQuery("");
+                    }}
                     title="Clear search"
                     className="text-text-faint hover:text-text-secondary"
                   >
@@ -431,14 +459,18 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
 
             {/* Action buttons */}
             <button
-              onClick={() => { setWrap((w) => !w); }}
+              onClick={() => {
+                setWrap((w) => !w);
+              }}
               className="rounded-input border border-border-input bg-surface-chip px-2.5 py-1 text-[11px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
               title="Toggle line wrap"
             >
               {wrap ? "No wrap" : "Wrap"}
             </button>
             <button
-              onClick={() => { void copyToClipboard(); }}
+              onClick={() => {
+                void copyToClipboard();
+              }}
               className="rounded-input border border-border-input bg-surface-chip px-2.5 py-1 text-[11px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
               title="Copy content"
             >
@@ -447,7 +479,10 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
 
             {mode === "view" ? (
               <button
-                onClick={() => { setMode("edit"); setSaveMsg(null); }}
+                onClick={() => {
+                  setMode("edit");
+                  setSaveMsg(null);
+                }}
                 className="flex items-center gap-1.5 rounded-input border border-border-input bg-surface-chip px-2.5 py-1 text-[11px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
                 title="Edit file"
               >
@@ -463,7 +498,9 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
                   Discard
                 </button>
                 <button
-                  onClick={() => { void handleSave(); }}
+                  onClick={() => {
+                    void handleSave();
+                  }}
                   disabled={!isDirty || saving}
                   className="rounded-input px-3 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                   style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
@@ -486,11 +523,7 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
                 : { background: "rgba(229,83,75,0.10)", color: "#b33c34" }
             }
           >
-            {saveMsg.ok ? (
-              <Check size={12} strokeWidth={2} />
-            ) : (
-              <X size={12} strokeWidth={2.2} />
-            )}
+            {saveMsg.ok ? <Check size={12} strokeWidth={2} /> : <X size={12} strokeWidth={2.2} />}
             {saveMsg.text}
           </div>
         )}
@@ -550,7 +583,10 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
             <textarea
               ref={textareaRef}
               value={draft}
-              onChange={(e) => { setDraft(e.target.value); setSaveMsg(null); }}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setSaveMsg(null);
+              }}
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
@@ -576,19 +612,25 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
             {state === "text" && (
               <>
                 <span>
-                  <kbd className="rounded border border-border-input px-1.5 py-0.5 font-mono text-[10px]">⌘F</kbd>{" "}
+                  <kbd className="rounded border border-border-input px-1.5 py-0.5 font-mono text-[10px]">
+                    ⌘F
+                  </kbd>{" "}
                   find
                 </span>
                 {mode === "edit" && (
                   <span>
-                    <kbd className="rounded border border-border-input px-1.5 py-0.5 font-mono text-[10px]">⌘S</kbd>{" "}
+                    <kbd className="rounded border border-border-input px-1.5 py-0.5 font-mono text-[10px]">
+                      ⌘S
+                    </kbd>{" "}
                     save
                   </span>
                 )}
               </>
             )}
             <span>
-              <kbd className="rounded border border-border-input px-1.5 py-0.5 font-mono text-[10px]">Esc</kbd>{" "}
+              <kbd className="rounded border border-border-input px-1.5 py-0.5 font-mono text-[10px]">
+                Esc
+              </kbd>{" "}
               close
             </span>
           </span>

@@ -20,10 +20,7 @@ export interface Tab {
  *   true  → the caller successfully reconnected; loadDir will retry once.
  *   false → give up; the tab shows an error.
  */
-export function useTabs(
-  homeDir: string,
-  onConnectionLost?: () => Promise<boolean>,
-) {
+export function useTabs(homeDir: string, onConnectionLost?: () => Promise<boolean>) {
   // Stable ref so the initial tab's ID is the same object across renders.
   const firstTabRef = useRef(makeTab(homeDir));
 
@@ -71,9 +68,7 @@ export function useTabs(
           } catch (retryErr: unknown) {
             setTabs((prev) =>
               prev.map((t) =>
-                t.id === tabId
-                  ? { ...t, status: "error", error: extractMessage(retryErr) }
-                  : t,
+                t.id === tabId ? { ...t, status: "error", error: extractMessage(retryErr) } : t,
               ),
             );
             return;
@@ -118,9 +113,7 @@ export function useTabs(
       const targetPath = tab.history[newIndex];
       if (!targetPath) return;
       setTabs((prev) =>
-        prev.map((t) =>
-          t.id === tabId ? { ...t, historyIndex: newIndex, path: targetPath } : t,
-        ),
+        prev.map((t) => (t.id === tabId ? { ...t, historyIndex: newIndex, path: targetPath } : t)),
       );
       void loadDir(tabId, targetPath);
     },
@@ -135,9 +128,7 @@ export function useTabs(
       const targetPath = tab.history[newIndex];
       if (!targetPath) return;
       setTabs((prev) =>
-        prev.map((t) =>
-          t.id === tabId ? { ...t, historyIndex: newIndex, path: targetPath } : t,
-        ),
+        prev.map((t) => (t.id === tabId ? { ...t, historyIndex: newIndex, path: targetPath } : t)),
       );
       void loadDir(tabId, targetPath);
     },

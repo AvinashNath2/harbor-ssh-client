@@ -20,7 +20,9 @@ export function SessionLogPage({ onClose }: SessionLogPageProps) {
         {/* Back / close */}
         {view.kind === "detail" ? (
           <button
-            onClick={() => { setView({ kind: "list" }); }}
+            onClick={() => {
+              setView({ kind: "list" });
+            }}
             className="flex items-center gap-1.5 text-[12.5px] font-medium text-text-secondary transition-colors hover:text-text-primary"
           >
             <ArrowLeft size={14} strokeWidth={2.2} />
@@ -57,7 +59,9 @@ export function SessionLogPage({ onClose }: SessionLogPageProps) {
               <ChevronRight size={13} strokeWidth={2} />
               <span className="text-[12px] text-text-secondary">
                 {new Date(view.session.startedAt).toLocaleDateString(undefined, {
-                  month: "short", day: "numeric", year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
                 })}
               </span>
             </>
@@ -69,12 +73,12 @@ export function SessionLogPage({ onClose }: SessionLogPageProps) {
       <div className="min-h-0 flex-1">
         {view.kind === "list" && (
           <SessionListView
-            onOpen={(session) => { setView({ kind: "detail", session }); }}
+            onOpen={(session) => {
+              setView({ kind: "detail", session });
+            }}
           />
         )}
-        {view.kind === "detail" && (
-          <SessionDetailView session={view.session} />
-        )}
+        {view.kind === "detail" && <SessionDetailView session={view.session} />}
       </div>
     </div>
   );

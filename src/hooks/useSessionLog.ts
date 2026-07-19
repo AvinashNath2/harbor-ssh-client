@@ -70,7 +70,7 @@ export function useSessionLog(
         cmdIdxRef.current = 0;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, connectResult?.host]);
 
   const logCommand = useCallback((cmd: PendingCommand) => {

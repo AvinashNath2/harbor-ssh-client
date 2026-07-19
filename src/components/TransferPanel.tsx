@@ -65,7 +65,11 @@ function TransferRow({
   onCancel: (id: string) => void;
 }) {
   const pct =
-    t.total > 0 ? Math.min(100, Math.round((t.transferred / t.total) * 100)) : t.status === "done" ? 100 : 0;
+    t.total > 0
+      ? Math.min(100, Math.round((t.transferred / t.total) * 100))
+      : t.status === "done"
+        ? 100
+        : 0;
 
   const statusColor =
     t.status === "done"
@@ -80,7 +84,7 @@ function TransferRow({
     t.status === "done"
       ? "Done"
       : t.status === "error"
-        ? t.error ?? "Error"
+        ? (t.error ?? "Error")
         : t.status === "cancelled"
           ? "Cancelled"
           : t.status === "active"
@@ -128,7 +132,8 @@ function TransferRow({
             className="h-full rounded-full transition-all"
             style={{
               width: `${pct.toString()}%`,
-              background: t.status === "done" ? "#1f9d63" : "linear-gradient(90deg, #3f7be0, #2f6bdb)",
+              background:
+                t.status === "done" ? "#1f9d63" : "linear-gradient(90deg, #3f7be0, #2f6bdb)",
             }}
           />
         </div>

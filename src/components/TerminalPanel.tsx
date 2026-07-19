@@ -33,8 +33,10 @@ const DEFAULT_MAX_BYTES = 100 * 1024; // 100 KB
 function getOutputLimits(): { maxLines: number; maxBytes: number } {
   try {
     return {
-      maxLines: parseInt(localStorage.getItem("harbor.log.maxLines") ?? "", 10) || DEFAULT_MAX_LINES,
-      maxBytes: parseInt(localStorage.getItem("harbor.log.maxBytes") ?? "", 10) || DEFAULT_MAX_BYTES,
+      maxLines:
+        parseInt(localStorage.getItem("harbor.log.maxLines") ?? "", 10) || DEFAULT_MAX_LINES,
+      maxBytes:
+        parseInt(localStorage.getItem("harbor.log.maxBytes") ?? "", 10) || DEFAULT_MAX_BYTES,
     };
   } catch {
     return { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES };
@@ -49,7 +51,13 @@ interface TerminalPanelProps {
   onCommandLogged?: (cmd: PendingCommand) => void;
 }
 
-export function TerminalPanel({ serverLabel, profiles, currentHost, onClose, onCommandLogged }: TerminalPanelProps) {
+export function TerminalPanel({
+  serverLabel,
+  profiles,
+  currentHost,
+  onClose,
+  onCommandLogged,
+}: TerminalPanelProps) {
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -80,9 +88,13 @@ export function TerminalPanel({ serverLabel, profiles, currentHost, onClose, onC
         ),
       );
     })
-      .then((fn) => { unlisten = fn; })
+      .then((fn) => {
+        unlisten = fn;
+      })
       .catch(() => undefined);
-    return () => { unlisten?.(); };
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   async function openNewTab(profile?: ConnectionProfile, password?: string) {
@@ -94,8 +106,8 @@ export function TerminalPanel({ serverLabel, profiles, currentHost, onClose, onC
       if (profile) {
         const authMethod =
           profile.authType === "password"
-            ? ({ type: "password" as const, password: password ?? "" })
-            : ({ type: "publicKey" as const, key_path: profile.keyPath ?? "~/.ssh/id_rsa" });
+            ? { type: "password" as const, password: password ?? "" }
+            : { type: "publicKey" as const, key_path: profile.keyPath ?? "~/.ssh/id_rsa" };
         await openTerminal(id, {
           host: profile.host,
           port: profile.port,
@@ -108,9 +120,7 @@ export function TerminalPanel({ serverLabel, profiles, currentHost, onClose, onC
       setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, status: "open" } : t)));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setTabs((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status: "error", error: msg } : t)),
-      );
+      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, status: "error", error: msg } : t)));
     }
   }
 
@@ -202,9 +212,14 @@ export function TerminalPanel({ serverLabel, profiles, currentHost, onClose, onC
             <TerminalPicker
               currentLabel={serverLabel}
               otherProfiles={otherProfiles}
-              onPickCurrent={() => { setShowPicker(false); void openNewTab(); }}
+              onPickCurrent={() => {
+                setShowPicker(false);
+                void openNewTab();
+              }}
               onPickProfile={handlePickProfile}
-              onClose={() => { setShowPicker(false); }}
+              onClose={() => {
+                setShowPicker(false);
+              }}
             />
           )}
         </div>
@@ -241,14 +256,18 @@ export function TerminalPanel({ serverLabel, profiles, currentHost, onClose, onC
                   <p className="mt-1 font-mono text-[11px] text-gray-500">{tab.error}</p>
                   <div className="mt-3 flex items-center justify-center gap-2">
                     <button
-                      onClick={() => { void openNewTab(); }}
+                      onClick={() => {
+                        void openNewTab();
+                      }}
                       className="rounded-input px-4 py-1.5 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
                       style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
                     >
                       Retry
                     </button>
                     <button
-                      onClick={() => { handleCloseTab(tab.id); }}
+                      onClick={() => {
+                        handleCloseTab(tab.id);
+                      }}
                       className="rounded-input border border-border-input px-3 py-1.5 text-[12.5px] font-medium text-gray-400 transition-colors hover:text-gray-200"
                     >
                       Close tab
@@ -270,14 +289,14 @@ export function TerminalPanel({ serverLabel, profiles, currentHost, onClose, onC
                 style={{ background: "rgba(20,18,15,0.75)", backdropFilter: "blur(2px)" }}
               >
                 <div className="rounded-[10px] border border-border-raised bg-surface-pane px-5 py-4 text-center shadow-lg">
-                  <div className="text-[13px] font-semibold text-text-primary">
-                    Session dropped
-                  </div>
+                  <div className="text-[13px] font-semibold text-text-primary">Session dropped</div>
                   <div className="mt-1 text-[11.5px] text-text-secondary">
                     The SSH connection to {tab.label} was lost.
                   </div>
                   <button
-                    onClick={() => { void reconnectTab(tab.id); }}
+                    onClick={() => {
+                      void reconnectTab(tab.id);
+                    }}
                     className="mt-3 rounded-input px-4 py-1.5 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
                     style={{
                       background: "linear-gradient(150deg, #3f7be0, #2f6bdb)",
@@ -301,7 +320,9 @@ export function TerminalPanel({ serverLabel, profiles, currentHost, onClose, onC
             setPasswordPromptFor(null);
             void openNewTab(p, password);
           }}
-          onCancel={() => { setPasswordPromptFor(null); }}
+          onCancel={() => {
+            setPasswordPromptFor(null);
+          }}
         />
       )}
     </div>
@@ -329,7 +350,9 @@ function TerminalPicker({
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     }
     document.addEventListener("mousedown", handler);
-    return () => { document.removeEventListener("mousedown", handler); };
+    return () => {
+      document.removeEventListener("mousedown", handler);
+    };
   }, [onClose]);
 
   return (
@@ -362,7 +385,9 @@ function TerminalPicker({
           {otherProfiles.map((p) => (
             <button
               key={p.id}
-              onClick={() => { onPickProfile(p); }}
+              onClick={() => {
+                onPickProfile(p);
+              }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[rgba(63,123,224,0.15)]"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-[#8a8578]" />
@@ -401,7 +426,9 @@ function TerminalPasswordPrompt({
     <div
       className="absolute inset-0 z-50 flex items-center justify-center"
       style={{ background: "rgba(0,0,0,0.5)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
     >
       <div
         className="w-[340px] overflow-hidden rounded-[12px] border border-border-raised"
@@ -414,14 +441,19 @@ function TerminalPasswordPrompt({
           </div>
         </div>
         <form
-          onSubmit={(e) => { e.preventDefault(); onSubmit(password); }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit(password);
+          }}
           className="flex flex-col gap-3 px-4 py-3"
         >
           <input
             autoFocus
             type="password"
             value={password}
-            onChange={(e) => { setPassword(e.target.value); }}
+            onChange={(e) => {
+              setPassword(e.target.value);
+            }}
             placeholder="Password"
             className="h-9 rounded-[7px] border border-[#2a2b2e] bg-[#111214] px-3 text-[13px] text-[#e0ddd8] outline-none focus:border-accent-dark"
           />
@@ -560,7 +592,10 @@ function XTermView({
     p.originalBytes += bytes.length;
 
     for (const line of text.split("\n")) {
-      if (p.outputBytes + line.length > limits.maxBytes || p.outputLines.length >= limits.maxLines) {
+      if (
+        p.outputBytes + line.length > limits.maxBytes ||
+        p.outputLines.length >= limits.maxLines
+      ) {
         p.truncated = true;
         break;
       }
@@ -659,7 +694,9 @@ function XTermView({
             if (term.cols >= 20 && term.rows >= 3) {
               void resizeTerminal(terminalId, term.cols, term.rows);
             }
-          } catch { /* ignore fit errors */ }
+          } catch {
+            /* ignore fit errors */
+          }
         }, delay);
         timers.push(id);
       }

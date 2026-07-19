@@ -86,12 +86,17 @@ export function SshConfigImportModal({
         <div className="flex items-start gap-3 border-b border-border px-6 py-5">
           <div
             className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-[11px] text-[16px] text-accent-dark"
-            style={{ background: "rgba(47,107,219,0.10)", border: "1px solid rgba(47,107,219,0.25)" }}
+            style={{
+              background: "rgba(47,107,219,0.10)",
+              border: "1px solid rgba(47,107,219,0.25)",
+            }}
           >
             ⌘
           </div>
           <div className="flex-1">
-            <div className="text-[16px] font-semibold text-text-primary">Import from ~/.ssh/config</div>
+            <div className="text-[16px] font-semibold text-text-primary">
+              Import from ~/.ssh/config
+            </div>
             <div className="mt-0.5 text-[12.5px] text-text-secondary">
               Select hosts to import as saved sessions
             </div>
@@ -107,7 +112,9 @@ export function SshConfigImportModal({
         {/* Body */}
         <div className="max-h-[420px] overflow-y-auto">
           {status === "loading" && (
-            <div className="px-6 py-10 text-center text-[13px] text-text-faint">Reading config…</div>
+            <div className="px-6 py-10 text-center text-[13px] text-text-faint">
+              Reading config…
+            </div>
           )}
 
           {status === "error" && (
@@ -128,7 +135,9 @@ export function SshConfigImportModal({
                 <button onClick={toggleAll} className="hover:text-accent-dark">
                   {selected.size === hosts.length ? "Clear all" : "Select all"}
                 </button>
-                <span>{selected.size} / {hosts.length}</span>
+                <span>
+                  {selected.size} / {hosts.length}
+                </span>
               </div>
               {hosts.map((h) => {
                 const isSelected = selected.has(h.name);
@@ -142,7 +151,9 @@ export function SshConfigImportModal({
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => { toggle(h.name); }}
+                      onChange={() => {
+                        toggle(h.name);
+                      }}
                       className="h-3.5 w-3.5 flex-shrink-0 accent-accent-dark"
                     />
                     <div className="min-w-0 flex-1">
@@ -150,7 +161,8 @@ export function SshConfigImportModal({
                         {h.name}
                       </div>
                       <div className="truncate font-mono text-[11px] text-text-tertiary">
-                        {displayUser}{displayHost}
+                        {displayUser}
+                        {displayHost}
                         {h.port ? `:${h.port.toString()}` : ""}
                         {h.identityFile ? `  ·  key: ${h.identityFile}` : ""}
                       </div>
@@ -170,7 +182,9 @@ export function SshConfigImportModal({
             </label>
             <input
               value={folder}
-              onChange={(e) => { setFolder(e.target.value); }}
+              onChange={(e) => {
+                setFolder(e.target.value);
+              }}
               className="h-8 w-[140px] rounded-input border border-border-input bg-surface-pane px-2 text-[12.5px] text-text-primary outline-none focus:border-accent-dark"
             />
           </div>

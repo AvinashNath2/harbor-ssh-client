@@ -23,7 +23,7 @@ export function AddTunnelDialog({ onAdd, onClose }: Props) {
     setLocalPort(String(p.port));
   }
 
-  function submit(e: React.FormEvent) {
+  function submit(e: React.SyntheticEvent) {
     e.preventDefault();
     const lp = parseInt(localPort, 10);
     const rp = parseInt(remotePort, 10);
@@ -38,7 +38,9 @@ export function AddTunnelDialog({ onAdd, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <form
         onSubmit={submit}
@@ -51,7 +53,9 @@ export function AddTunnelDialog({ onAdd, onClose }: Props) {
             <button
               key={p.label}
               type="button"
-              onClick={() => { applyPreset(p); }}
+              onClick={() => {
+                applyPreset(p);
+              }}
               className="rounded-[6px] bg-surface-chip px-2.5 py-1 text-[11px] text-text-secondary hover:bg-surface-hover hover:text-text-primary"
             >
               {p.label}
@@ -62,7 +66,9 @@ export function AddTunnelDialog({ onAdd, onClose }: Props) {
         <label className="mb-1 block text-[11px] text-text-faint">Local Port</label>
         <input
           value={localPort}
-          onChange={(e) => { setLocalPort(e.target.value); }}
+          onChange={(e) => {
+            setLocalPort(e.target.value);
+          }}
           type="number"
           min={1024}
           max={65535}
@@ -74,7 +80,9 @@ export function AddTunnelDialog({ onAdd, onClose }: Props) {
         <label className="mb-1 block text-[11px] text-text-faint">Remote Host</label>
         <input
           value={remoteHost}
-          onChange={(e) => { setRemoteHost(e.target.value); }}
+          onChange={(e) => {
+            setRemoteHost(e.target.value);
+          }}
           required
           placeholder="localhost"
           className={`mb-3 ${inputClass}`}
@@ -83,7 +91,9 @@ export function AddTunnelDialog({ onAdd, onClose }: Props) {
         <label className="mb-1 block text-[11px] text-text-faint">Remote Port</label>
         <input
           value={remotePort}
-          onChange={(e) => { setRemotePort(e.target.value); }}
+          onChange={(e) => {
+            setRemotePort(e.target.value);
+          }}
           type="number"
           min={1}
           max={65535}

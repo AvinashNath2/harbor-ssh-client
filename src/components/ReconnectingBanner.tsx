@@ -23,11 +23,7 @@ export function ReconnectingBanner({
 }: ReconnectingBannerProps) {
   const isFailure = status === "failed";
   return (
-    <div
-      className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2"
-      role="status"
-      aria-live="polite"
-    >
+    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2" role="status" aria-live="polite">
       <div
         className="flex items-center gap-3 rounded-[12px] border px-4 py-2.5 shadow-lg"
         style={
@@ -68,9 +64,7 @@ export function ReconnectingBanner({
             </span>
           )}
           {isFailure && reason && (
-            <span className="mt-0.5 font-mono text-[10.5px] text-danger/70">
-              {reason}
-            </span>
+            <span className="mt-0.5 font-mono text-[10.5px] text-danger/70">{reason}</span>
           )}
         </div>
         {isFailure && onDismiss && (

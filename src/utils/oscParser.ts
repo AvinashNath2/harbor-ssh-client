@@ -56,7 +56,11 @@ function parseParams(str: string): Record<string, string> {
 }
 
 function safeDecode(b64: string): string {
-  try { return atob(b64); } catch { return b64; }
+  try {
+    return atob(b64);
+  } catch {
+    return b64;
+  }
 }
 
 function parseHarborOsc(body: string): OscEvent | null {
@@ -182,9 +186,5 @@ const ESC_RE = /\x1b[^[]/g;
 
 /** Strip ANSI/VT100 escape sequences so captured output is plain text. */
 export function stripAnsi(raw: string): string {
-  return raw
-    .replace(CSI_RE, "")
-    .replace(ESC_RE, "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
+  return raw.replace(CSI_RE, "").replace(ESC_RE, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }

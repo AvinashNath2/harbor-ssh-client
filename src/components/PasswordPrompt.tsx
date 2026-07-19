@@ -23,7 +23,9 @@ export function PasswordPrompt({
     <div
       className="absolute inset-0 z-50 flex items-center justify-center"
       style={{ background: "rgba(200,196,188,0.55)", backdropFilter: "blur(3px)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
     >
       <div
         className="w-[380px] overflow-hidden rounded-modal border border-border-raised bg-surface-pane"
@@ -38,7 +40,10 @@ export function PasswordPrompt({
           </div>
         </div>
         <form
-          onSubmit={(e) => { e.preventDefault(); if (!isLoading) onSubmit(password); }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!isLoading) onSubmit(password);
+          }}
           className="flex flex-col gap-3 px-5 py-4"
         >
           {error && (
@@ -50,7 +55,9 @@ export function PasswordPrompt({
             autoFocus
             type="password"
             value={password}
-            onChange={(e) => { setPassword(e.target.value); }}
+            onChange={(e) => {
+              setPassword(e.target.value);
+            }}
             placeholder="Password"
             className="h-9 rounded-input border border-border-input bg-surface-pane px-3 text-[13px] text-text-primary outline-none focus:border-accent-dark"
           />

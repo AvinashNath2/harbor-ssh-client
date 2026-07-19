@@ -118,7 +118,9 @@ export function FileBrowser({
       }
     }
     window.addEventListener("keydown", handler);
-    return () => { window.removeEventListener("keydown", handler); };
+    return () => {
+      window.removeEventListener("keydown", handler);
+    };
   }, [tab.path]);
 
   // Auto-focus path input when editing mode activates.
@@ -128,41 +130,66 @@ export function FileBrowser({
 
   // Path validation — 400ms debounce.
   useEffect(() => {
-    if (!editingPath) { setPathValid(null); return; }
+    if (!editingPath) {
+      setPathValid(null);
+      return;
+    }
     const raw = pathInput.trim();
-    if (!raw) { setPathValid(null); return; }
+    if (!raw) {
+      setPathValid(null);
+      return;
+    }
     if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current);
     pathValidTimerRef.current = setTimeout(() => {
       const lastSlash = raw.lastIndexOf("/");
       const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
       const base = raw.endsWith("/") ? "" : raw.slice(lastSlash + 1);
       const checkDir = raw.endsWith("/") ? raw.replace(/\/$/, "") || "/" : dir;
-      void listFolder(checkDir).then((entries) => {
-        setPathValid(!base || entries.some((en) => en.name === base));
-      }).catch(() => { setPathValid(false); });
+      void listFolder(checkDir)
+        .then((entries) => {
+          setPathValid(!base || entries.some((en) => en.name === base));
+        })
+        .catch(() => {
+          setPathValid(false);
+        });
     }, 400);
-    return () => { if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current); };
+    return () => {
+      if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current);
+    };
   }, [pathInput, editingPath]);
 
   // Autocomplete — 200ms debounce.
   useEffect(() => {
-    if (!editingPath) { setAcItems([]); setAcIndex(-1); return; }
+    if (!editingPath) {
+      setAcItems([]);
+      setAcIndex(-1);
+      return;
+    }
     const raw = pathInput.trim();
-    if (!raw) { setAcItems([]); return; }
+    if (!raw) {
+      setAcItems([]);
+      return;
+    }
     if (acTimerRef.current) clearTimeout(acTimerRef.current);
     acTimerRef.current = setTimeout(() => {
       const lastSlash = raw.lastIndexOf("/");
       const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
       const prefix = raw.slice(lastSlash + 1).toLowerCase();
-      void listFolder(dir).then((entries) => {
-        const matches = entries
-          .filter((en) => en.kind === "directory" && en.name.toLowerCase().startsWith(prefix))
-          .map((en) => (dir === "/" ? "/" + en.name : dir + "/" + en.name));
-        setAcItems(matches.slice(0, 12));
-        setAcIndex(-1);
-      }).catch(() => { setAcItems([]); });
+      void listFolder(dir)
+        .then((entries) => {
+          const matches = entries
+            .filter((en) => en.kind === "directory" && en.name.toLowerCase().startsWith(prefix))
+            .map((en) => (dir === "/" ? "/" + en.name : dir + "/" + en.name));
+          setAcItems(matches.slice(0, 12));
+          setAcIndex(-1);
+        })
+        .catch(() => {
+          setAcItems([]);
+        });
     }, 200);
-    return () => { if (acTimerRef.current) clearTimeout(acTimerRef.current); };
+    return () => {
+      if (acTimerRef.current) clearTimeout(acTimerRef.current);
+    };
   }, [pathInput, editingPath]);
 
   function requestFolderSize(path: string) {
@@ -172,20 +199,24 @@ export function FileBrowser({
     inflightSizes.current.add(path);
     setLoadingFolderSizes((prev) => new Set([...prev, path]));
     computeFolderSize(path)
-      .then((size) => { setFolderSizes((prev) => ({ ...prev, [path]: size })); })
+      .then((size) => {
+        setFolderSizes((prev) => ({ ...prev, [path]: size }));
+      })
       .catch(() => undefined)
       .finally(() => {
         inflightSizes.current.delete(path);
-        setLoadingFolderSizes((prev) => { const s = new Set(prev); s.delete(path); return s; });
+        setLoadingFolderSizes((prev) => {
+          const s = new Set(prev);
+          s.delete(path);
+          return s;
+        });
       });
   }
 
   // Filter + sort the entries. Folders always come first within a direction.
   const visibleEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const filtered = q
-      ? tab.entries.filter((e) => e.name.toLowerCase().includes(q))
-      : tab.entries;
+    const filtered = q ? tab.entries.filter((e) => e.name.toLowerCase().includes(q)) : tab.entries;
 
     const dirMul = sortDir === "asc" ? 1 : -1;
     const cmp = (a: FileEntry, b: FileEntry): number => {
@@ -196,14 +227,16 @@ export function FileBrowser({
       if (aDir !== bDir) return aDir ? -1 : 1;
       switch (sortCol) {
         case "size": {
-          const as = a.kind === "directory" ? folderSizes[a.path] ?? -1 : a.size ?? 0;
-          const bs = b.kind === "directory" ? folderSizes[b.path] ?? -1 : b.size ?? 0;
+          const as = a.kind === "directory" ? (folderSizes[a.path] ?? -1) : (a.size ?? 0);
+          const bs = b.kind === "directory" ? (folderSizes[b.path] ?? -1) : (b.size ?? 0);
           return dirMul * (as - bs);
         }
         case "modified":
           return dirMul * ((a.modified ?? 0) - (b.modified ?? 0));
         case "type":
-          return dirMul * fileTypeLabel(a.name, a.kind).localeCompare(fileTypeLabel(b.name, b.kind));
+          return (
+            dirMul * fileTypeLabel(a.name, a.kind).localeCompare(fileTypeLabel(b.name, b.kind))
+          );
         case "name":
         default:
           return dirMul * a.name.toLowerCase().localeCompare(b.name.toLowerCase());
@@ -298,7 +331,9 @@ export function FileBrowser({
         {
           label: "Rename",
           icon: <Pencil size={11} strokeWidth={2} />,
-          onClick: () => { setRenamingPath(ctx.paths[0]); },
+          onClick: () => {
+            setRenamingPath(ctx.paths[0]);
+          },
         },
         {
           label: "Edit permissions",
@@ -311,19 +346,25 @@ export function FileBrowser({
         {
           label: "Copy path",
           icon: <Copy size={12} strokeWidth={2} />,
-          onClick: () => { void navigator.clipboard.writeText(ctx.entry.path); },
+          onClick: () => {
+            void navigator.clipboard.writeText(ctx.entry.path);
+          },
         },
         {
           label: "Compute size",
           icon: <HardDrive size={12} strokeWidth={2} />,
-          onClick: () => { requestFolderSize(ctx.entry.path); },
+          onClick: () => {
+            requestFolderSize(ctx.entry.path);
+          },
         },
         { label: "---", onClick: () => undefined },
         {
           label: "Delete",
           icon: <Trash2 size={13} strokeWidth={2} />,
           danger: true,
-          onClick: () => { onDelete(ctx.paths); },
+          onClick: () => {
+            onDelete(ctx.paths);
+          },
         },
       ];
     }
@@ -363,27 +404,35 @@ export function FileBrowser({
         label: "Copy path",
         icon: <Copy size={12} strokeWidth={2} />,
         disabled: !single,
-        onClick: () => { void navigator.clipboard.writeText(ctx.entry.path); },
+        onClick: () => {
+          void navigator.clipboard.writeText(ctx.entry.path);
+        },
       },
       { label: "---", onClick: () => undefined },
       {
         label: "Rename",
         icon: <Pencil size={11} strokeWidth={2} />,
         disabled: !single,
-        onClick: () => { setRenamingPath(ctx.paths[0]); },
+        onClick: () => {
+          setRenamingPath(ctx.paths[0]);
+        },
       },
       {
         label: "Download",
         icon: <ArrowDown size={13} strokeWidth={2} />,
         disabled: filePaths.length === 0,
-        onClick: () => { onDownload(filePaths); },
+        onClick: () => {
+          onDownload(filePaths);
+        },
       },
       { label: "---", onClick: () => undefined },
       {
         label: ctx.paths.length > 1 ? `Delete ${ctx.paths.length.toString()} items` : "Delete",
         icon: <Trash2 size={13} strokeWidth={2} />,
         danger: true,
-        onClick: () => { onDelete(ctx.paths); },
+        onClick: () => {
+          onDelete(ctx.paths);
+        },
       },
     ];
   }
@@ -409,15 +458,17 @@ export function FileBrowser({
       e.preventDefault();
       try {
         const paths: unknown = JSON.parse(raw);
-        if (Array.isArray(paths)) onReceiveLocalDrop(paths.filter((p): p is string => typeof p === "string"));
-      } catch { /* ignore */ }
+        if (Array.isArray(paths))
+          onReceiveLocalDrop(paths.filter((p): p is string => typeof p === "string"));
+      } catch {
+        /* ignore */
+      }
       return;
     }
     if (e.dataTransfer.files.length > 0) {
       e.preventDefault();
       const localPaths: string[] = [];
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i] as File & { path?: string };
+      for (const file of Array.from(e.dataTransfer.files) as (File & { path?: string })[]) {
         if (file.path) localPaths.push(file.path);
       }
       if (localPaths.length > 0) onReceiveLocalDrop(localPaths);
@@ -449,17 +500,40 @@ export function FileBrowser({
               autoFocus
               type="text"
               value={pathInput}
-              onChange={(e) => { setPathInput(e.target.value); }}
-              onBlur={() => { setTimeout(() => { setEditingPath(false); setAcItems([]); setPathValid(null); }, 120); }}
+              onChange={(e) => {
+                setPathInput(e.target.value);
+              }}
+              onBlur={() => {
+                setTimeout(() => {
+                  setEditingPath(false);
+                  setAcItems([]);
+                  setPathValid(null);
+                }, 120);
+              }}
               onKeyDown={(e) => {
-                if (e.key === "Escape") { setEditingPath(false); setAcItems([]); return; }
+                if (e.key === "Escape") {
+                  setEditingPath(false);
+                  setAcItems([]);
+                  return;
+                }
                 if (acItems.length > 0) {
-                  if (e.key === "ArrowDown") { e.preventDefault(); setAcIndex((i) => Math.min(i + 1, acItems.length - 1)); return; }
-                  if (e.key === "ArrowUp") { e.preventDefault(); setAcIndex((i) => Math.max(i - 1, -1)); return; }
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setAcIndex((i) => Math.min(i + 1, acItems.length - 1));
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setAcIndex((i) => Math.max(i - 1, -1));
+                    return;
+                  }
                   if (e.key === "Tab" || (e.key === "Enter" && acIndex >= 0)) {
                     e.preventDefault();
                     const chosen = acItems[acIndex >= 0 ? acIndex : 0];
-                    if (chosen) { setPathInput(chosen + "/"); setAcIndex(-1); }
+                    if (chosen) {
+                      setPathInput(chosen + "/");
+                      setAcIndex(-1);
+                    }
                     return;
                   }
                 }
@@ -473,7 +547,12 @@ export function FileBrowser({
             <PathAutocomplete
               items={acItems}
               activeIndex={acIndex}
-              onSelect={(p) => { setPathInput(p); setAcItems([]); setAcIndex(-1); pathInputRef.current?.focus(); }}
+              onSelect={(p) => {
+                setPathInput(p);
+                setAcItems([]);
+                setAcIndex(-1);
+                pathInputRef.current?.focus();
+              }}
             />
           </form>
         ) : (
@@ -491,10 +570,15 @@ export function FileBrowser({
         )}
 
         <button
-          onClick={() => { onSelectionChange(new Set()); onNavigate(homeDir); }}
+          onClick={() => {
+            onSelectionChange(new Set());
+            onNavigate(homeDir);
+          }}
           title="Go to home directory"
           className="flex-shrink-0 rounded-[5px] px-[6px] py-[2px] font-mono text-[10px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
-        >~</button>
+        >
+          ~
+        </button>
 
         <div className="flex-1" />
 
@@ -503,16 +587,23 @@ export function FileBrowser({
           <Search size={11} strokeWidth={2} className="text-text-faint" />
           <input
             value={search}
-            onChange={(e) => { setSearch(e.target.value); }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Escape") { setSearch(""); (e.target as HTMLInputElement).blur(); }
+              if (e.key === "Escape") {
+                setSearch("");
+                (e.target as HTMLInputElement).blur();
+              }
             }}
             placeholder="Filter…"
             className="w-[110px] bg-transparent text-[11.5px] text-text-primary outline-none placeholder:text-text-faint"
           />
           {search && (
             <button
-              onClick={() => { setSearch(""); }}
+              onClick={() => {
+                setSearch("");
+              }}
               title="Clear filter"
               className="flex h-4 w-4 items-center justify-center text-text-faint hover:text-text-secondary"
             >
@@ -541,8 +632,21 @@ export function FileBrowser({
         {!compact && (
           <SortHeader col="type" label="Type" active={sortCol} dir={sortDir} onClick={toggleSort} />
         )}
-        <SortHeader col="size" label="Size" active={sortCol} dir={sortDir} onClick={toggleSort} align="right" />
-        <SortHeader col="modified" label="Modified" active={sortCol} dir={sortDir} onClick={toggleSort} />
+        <SortHeader
+          col="size"
+          label="Size"
+          active={sortCol}
+          dir={sortDir}
+          onClick={toggleSort}
+          align="right"
+        />
+        <SortHeader
+          col="modified"
+          label="Modified"
+          active={sortCol}
+          dir={sortDir}
+          onClick={toggleSort}
+        />
         {!compact && <span>Perms</span>}
       </div>
 
@@ -580,7 +684,9 @@ export function FileBrowser({
               <div className="flex items-center justify-between gap-3 border-b border-danger/20 bg-danger/10 px-4 py-2">
                 <span className="text-[12px] text-danger">Rename failed: {renameError}</span>
                 <button
-                  onClick={() => { setRenameError(null); }}
+                  onClick={() => {
+                    setRenameError(null);
+                  }}
                   className="text-[11px] text-danger/60 hover:text-danger"
                 >
                   ✕
@@ -644,7 +750,9 @@ export function FileBrowser({
               <div className="flex h-full flex-col items-center justify-center gap-2 text-[13px] text-text-faint">
                 <span>No matches for &ldquo;{search}&rdquo;</span>
                 <button
-                  onClick={() => { setSearch(""); }}
+                  onClick={() => {
+                    setSearch("");
+                  }}
                   className="text-[11.5px] text-accent-dark hover:underline"
                 >
                   Clear filter
@@ -657,10 +765,7 @@ export function FileBrowser({
 
       {/* Footer — file count + size */}
       {tab.status === "ready" && (
-        <RemoteFooter
-          entries={tab.entries}
-          filtered={search ? visibleEntries.length : null}
-        />
+        <RemoteFooter entries={tab.entries} filtered={search ? visibleEntries.length : null} />
       )}
 
       {ctxMenu != null && (
@@ -788,7 +893,9 @@ function FileList({
           compact={compact}
           gridCols={gridCols}
           folderSize={entry.kind === "directory" ? folderSizes[entry.path] : undefined}
-          folderSizeLoading={entry.kind === "directory" ? loadingFolderSizes.has(entry.path) : false}
+          folderSizeLoading={
+            entry.kind === "directory" ? loadingFolderSizes.has(entry.path) : false
+          }
           onClick={onRowClick}
           onDoubleClick={onRowDoubleClick}
           onContextMenu={onRowContextMenu}
@@ -912,13 +1019,17 @@ function FileRow({
 
       {/* Size — for folders, show the computed recursive size once available */}
       <span className="text-right font-mono text-[11.5px] text-text-tertiary">
-        {entry.kind === "directory"
-          ? folderSize !== undefined
-            ? formatSize(folderSize)
-            : folderSizeLoading
-              ? <span className="animate-pulse text-text-faint">…</span>
-              : "—"
-          : formatSize(entry.size)}
+        {entry.kind === "directory" ? (
+          folderSize !== undefined ? (
+            formatSize(folderSize)
+          ) : folderSizeLoading ? (
+            <span className="animate-pulse text-text-faint">…</span>
+          ) : (
+            "—"
+          )
+        ) : (
+          formatSize(entry.size)
+        )}
       </span>
 
       {/* Modified */}
@@ -954,7 +1065,9 @@ function SortHeader({
   const isActive = active === col;
   return (
     <button
-      onClick={() => { onClick(col); }}
+      onClick={() => {
+        onClick(col);
+      }}
       className={`flex items-center gap-1 font-inherit text-inherit transition-colors hover:text-text-primary ${
         align === "right" ? "justify-end" : "justify-start"
       } ${isActive ? "text-text-primary" : ""}`}
@@ -1004,12 +1117,16 @@ function PathAutocomplete({
   return (
     <div
       className="absolute left-0 top-full z-50 mt-0.5 max-h-[240px] w-full overflow-auto rounded-[10px] border border-border-raised bg-surface-pane py-1 shadow-[0_4px_24px_rgba(0,0,0,0.14)]"
-      onMouseDown={(e) => { e.preventDefault(); }}
+      onMouseDown={(e) => {
+        e.preventDefault();
+      }}
     >
       {items.map((item, i) => (
         <button
           key={item}
-          onMouseDown={() => { onSelect(item + "/"); }}
+          onMouseDown={() => {
+            onSelect(item + "/");
+          }}
           className={`block w-full truncate px-3 py-[5px] text-left font-mono text-[12px] transition-colors ${
             i === activeIndex
               ? "bg-accent/[0.09] text-text-primary"

@@ -154,7 +154,9 @@ export function Sidebar({
           <Search size={13} strokeWidth={2} className="text-text-faint" />
           <input
             value={search}
-            onChange={(e) => { setSearch(e.target.value); }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+            }}
             placeholder="Search hosts…"
             className="flex-1 bg-transparent text-[12.5px] text-text-primary outline-none placeholder:text-text-faint"
           />
@@ -194,10 +196,18 @@ export function Sidebar({
                 depth={1}
                 isActive={resolvedActiveId === profile.id}
                 folderDotColor={folderColor(profile.folder ?? "General")}
-                onSelect={() => { onSelectProfile(profile); }}
-                onEdit={() => { onEditProfile(profile); }}
-                onDelete={() => { onDeleteProfile(profile.id); }}
-                onStar={() => { onStarProfile(profile); }}
+                onSelect={() => {
+                  onSelectProfile(profile);
+                }}
+                onEdit={() => {
+                  onEditProfile(profile);
+                }}
+                onDelete={() => {
+                  onDeleteProfile(profile.id);
+                }}
+                onStar={() => {
+                  onStarProfile(profile);
+                }}
               />
             ))}
           </TreeSection>
@@ -208,7 +218,9 @@ export function Sidebar({
           <div className="mt-1">
             <TreeCaret
               expanded={rootExpanded}
-              onClick={() => { setRootExpanded((v) => !v); }}
+              onClick={() => {
+                setRootExpanded((v) => !v);
+              }}
               label="Root"
               depth={0}
               bold
@@ -220,7 +232,9 @@ export function Sidebar({
                   <div key={folder}>
                     <TreeCaret
                       expanded={!isCollapsed}
-                      onClick={() => { toggleFolder(folder); }}
+                      onClick={() => {
+                        toggleFolder(folder);
+                      }}
                       label={folder}
                       count={items.length}
                       depth={1}
@@ -235,15 +249,25 @@ export function Sidebar({
                             depth={2}
                             isActive={resolvedActiveId === profile.id}
                             folderDotColor={folderColor(folder)}
-                            onSelect={() => { onSelectProfile(profile); }}
-                            onEdit={() => { onEditProfile(profile); }}
-                            onDelete={() => { onDeleteProfile(profile.id); }}
-                            onStar={() => { onStarProfile(profile); }}
+                            onSelect={() => {
+                              onSelectProfile(profile);
+                            }}
+                            onEdit={() => {
+                              onEditProfile(profile);
+                            }}
+                            onDelete={() => {
+                              onDeleteProfile(profile.id);
+                            }}
+                            onStar={() => {
+                              onStarProfile(profile);
+                            }}
                           />
                         ))}
                         <AddInFolderRow
                           depth={2}
-                          onClick={() => { onNewSessionInFolder(folder); }}
+                          onClick={() => {
+                            onNewSessionInFolder(folder);
+                          }}
                         />
                       </>
                     )}
@@ -333,9 +357,7 @@ function TreeCaret({
       >
         {label}
       </span>
-      {count != null && (
-        <span className="font-mono text-[10px] text-text-faint">{count}</span>
-      )}
+      {count != null && <span className="font-mono text-[10px] text-text-faint">{count}</span>}
     </div>
   );
 }
@@ -411,7 +433,10 @@ function SessionRow({
         <div className="flex flex-shrink-0 items-center gap-0.5">
           {/* Star — always shown when favorited; hidden-until-hover otherwise */}
           <button
-            onClick={(e) => { e.stopPropagation(); onStar(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStar();
+            }}
             className={`flex h-5 w-5 items-center justify-center rounded transition-colors hover:text-warning ${
               profile.favorite ? "" : "opacity-0 group-hover:opacity-100"
             }`}
@@ -421,14 +446,20 @@ function SessionRow({
             <Star size={11} strokeWidth={2} fill={profile.favorite ? "currentColor" : "none"} />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
             className="flex h-5 w-5 items-center justify-center rounded text-text-faint opacity-0 transition-colors group-hover:opacity-100 hover:text-accent-dark"
             title="Edit"
           >
             <Pencil size={11} strokeWidth={2} />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             className="flex h-5 w-5 items-center justify-center rounded text-text-faint opacity-0 transition-colors group-hover:opacity-100 hover:text-danger"
             title="Delete"
           >

@@ -15,8 +15,11 @@ function fmtSize(bytes: number | null): string {
 function fmtDate(ts: number | null): string {
   if (ts === null) return "—";
   const d = new Date(ts * 1000);
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) +
-    ", " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return (
+    d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) +
+    ", " +
+    d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+  );
 }
 
 function parseOctal(octal: string): boolean[][] {
@@ -109,7 +112,9 @@ export function FileDetailPanel({
         {(["info", "permissions"] as Tab[]).map((t) => (
           <button
             key={t}
-            onClick={() => { setActiveTab(t); }}
+            onClick={() => {
+              setActiveTab(t);
+            }}
             className={`flex-1 py-2 text-[11px] font-medium capitalize transition-colors ${
               activeTab === t
                 ? "border-b-2 border-accent-dark text-accent-dark"
@@ -130,10 +135,16 @@ export function FileDetailPanel({
             info={info}
             entry={entry}
             editable={permsEditable}
-            onRequestEdit={() => { setPermsEditable(true); }}
-            onDoneEditing={() => { setPermsEditable(false); }}
+            onRequestEdit={() => {
+              setPermsEditable(true);
+            }}
+            onDoneEditing={() => {
+              setPermsEditable(false);
+            }}
             onRefresh={() => {
-              getFileInfo(entry.path).then(setInfo).catch(() => undefined);
+              getFileInfo(entry.path)
+                .then(setInfo)
+                .catch(() => undefined);
             }}
           />
         )}
@@ -145,7 +156,9 @@ export function FileDetailPanel({
       {canPreview && (
         <div className="border-t border-border-raised px-3 py-3">
           <button
-            onClick={() => { setShowPreviewModal(true); }}
+            onClick={() => {
+              setShowPreviewModal(true);
+            }}
             className="flex w-full items-center justify-center gap-2 rounded-input border border-border-input bg-surface-chip py-2 text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-hover hover:text-accent-dark"
           >
             <Eye size={13} strokeWidth={2} />
@@ -158,7 +171,9 @@ export function FileDetailPanel({
         <PreviewModal
           onCommandLogged={onCommandLogged}
           entry={entry}
-          onClose={() => { setShowPreviewModal(false); }}
+          onClose={() => {
+            setShowPreviewModal(false);
+          }}
         />
       )}
     </div>
@@ -167,7 +182,14 @@ export function FileDetailPanel({
 
 // ── Info tab ──────────────────────────────────────────────────────────────────
 
-function InfoTab({ info, error }: { info: FileInfo | null; entry: FileEntry; error: string | null }) {
+function InfoTab({
+  info,
+  error,
+}: {
+  info: FileInfo | null;
+  entry: FileEntry;
+  error: string | null;
+}) {
   const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -192,7 +214,9 @@ function InfoTab({ info, error }: { info: FileInfo | null; entry: FileEntry; err
     void navigator.clipboard.writeText(value).then(() => {
       setCopiedLabel(label);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => { setCopiedLabel(null); }, 1500);
+      copyTimerRef.current = setTimeout(() => {
+        setCopiedLabel(null);
+      }, 1500);
     });
   }
 
@@ -291,7 +315,9 @@ function PermissionsTab({
         <span
           className="ml-2 text-text-faint cursor-help"
           title="Octal notation: digits represent Owner / Group / Other. Each digit sums Read(4) + Write(2) + Execute(1). e.g. 755 = owner rwx, group r-x, other r-x"
-        >({toOctalStr(perms)})</span>
+        >
+          ({toOctalStr(perms)})
+        </span>
         {!editable && (
           <span className="ml-2 rounded-chip bg-surface-chip px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.5px] text-text-secondary">
             Read-only
@@ -304,14 +330,20 @@ function PermissionsTab({
         <div className="grid grid-cols-4 border-b border-border-raised bg-surface-colheader px-3 py-1.5">
           <div />
           {BITS.map((b) => (
-            <div key={b} className="text-center font-mono text-[10px] font-semibold text-text-faint">
+            <div
+              key={b}
+              className="text-center font-mono text-[10px] font-semibold text-text-faint"
+            >
               {b}
             </div>
           ))}
         </div>
 
         {LABELS.map((label, gi) => (
-          <div key={label} className="grid grid-cols-4 border-b border-border-raised px-3 py-2.5 last:border-0">
+          <div
+            key={label}
+            className="grid grid-cols-4 border-b border-border-raised px-3 py-2.5 last:border-0"
+          >
             <div className="text-[12px] font-medium text-text-secondary">{label}</div>
             {[0, 1, 2].map((bi) => (
               <div key={bi} className="flex justify-center">
@@ -355,7 +387,9 @@ function PermissionsTab({
             Cancel
           </button>
           <button
-            onClick={() => { void apply(); }}
+            onClick={() => {
+              void apply();
+            }}
             disabled={applying}
             className="flex-1 rounded-input py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}

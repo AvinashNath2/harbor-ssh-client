@@ -10,7 +10,9 @@ interface SessionDetailViewProps {
 
 function fmtTime(ms: number) {
   return new Date(ms).toLocaleTimeString(undefined, {
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
 }
 
@@ -26,14 +28,14 @@ function SourceBadge({ source }: { source: CommandSource | null }) {
   return (
     <span
       className={`flex items-center gap-1 rounded-chip px-1.5 py-0.5 font-mono text-[9.5px] font-semibold ${
-        isTerminal
-          ? "bg-surface-chip text-text-secondary"
-          : "bg-accent/10 text-accent-dark"
+        isTerminal ? "bg-surface-chip text-text-secondary" : "bg-accent/10 text-accent-dark"
       }`}
     >
-      {isTerminal
-        ? <TerminalSquare size={9} strokeWidth={2.2} />
-        : <FolderSearch size={9} strokeWidth={2.2} />}
+      {isTerminal ? (
+        <TerminalSquare size={9} strokeWidth={2.2} />
+      ) : (
+        <FolderSearch size={9} strokeWidth={2.2} />
+      )}
       {isTerminal ? "Terminal" : "File Browser"}
     </span>
   );
@@ -64,7 +66,9 @@ function CommandCard({ cmd }: { cmd: CommandRecord }) {
     <div className="border-b border-border-subtle last:border-0">
       {/* Header row — always visible */}
       <button
-        onClick={() => { setExpanded((v) => !v); }}
+        onClick={() => {
+          setExpanded((v) => !v);
+        }}
         className="flex w-full items-start gap-3 px-5 py-3 text-left transition-colors hover:bg-surface-hover"
       >
         {/* Index */}
@@ -94,7 +98,11 @@ function CommandCard({ cmd }: { cmd: CommandRecord }) {
         {/* Expand toggle */}
         {cmd.output !== null && (
           <span className="flex-shrink-0 text-text-faint">
-            {expanded ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}
+            {expanded ? (
+              <ChevronUp size={13} strokeWidth={2} />
+            ) : (
+              <ChevronDown size={13} strokeWidth={2} />
+            )}
           </span>
         )}
       </button>
@@ -140,9 +148,13 @@ export function SessionDetailView({ session }: SessionDetailViewProps) {
   useEffect(() => {
     setLoading(true);
     loadSession(session.id)
-      .then((data) => { setCommands(data.commands); })
+      .then((data) => {
+        setCommands(data.commands);
+      })
       .catch(() => undefined)
-      .finally(() => { setLoading(false); });
+      .finally(() => {
+        setLoading(false);
+      });
   }, [session.id]);
 
   function handleExport() {
@@ -159,7 +171,9 @@ export function SessionDetailView({ session }: SessionDetailViewProps) {
     for (const cmd of commands) {
       parts.push(`#${cmd.idx.toString()}  ${fmtTime(cmd.executedAt)}  ${cmd.cwd}\n`);
       parts.push(`$ ${cmd.raw}\n`);
-      parts.push(`EXIT: ${cmd.exitCode?.toString() ?? "—"}  DURATION: ${fmtDuration(cmd.durationMs)}\n`);
+      parts.push(
+        `EXIT: ${cmd.exitCode?.toString() ?? "—"}  DURATION: ${fmtDuration(cmd.durationMs)}\n`,
+      );
       if (cmd.output) {
         parts.push(cmd.output);
         if (cmd.outputTruncated) {
@@ -198,15 +212,19 @@ export function SessionDetailView({ session }: SessionDetailViewProps) {
               <span>IP: {session.ip}</span>
               <span>
                 {new Date(session.startedAt).toLocaleTimeString(undefined, {
-                  hour: "2-digit", minute: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
                 })}
                 {session.endedAt &&
                   ` – ${new Date(session.endedAt).toLocaleTimeString(undefined, {
-                    hour: "2-digit", minute: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
                   })}`}
               </span>
               <span>Duration: {fmtSessionDuration(session.startedAt, session.endedAt)}</span>
-              <span>{session.cmdCount.toString()} command{session.cmdCount !== 1 ? "s" : ""}</span>
+              <span>
+                {session.cmdCount.toString()} command{session.cmdCount !== 1 ? "s" : ""}
+              </span>
             </div>
           </div>
 

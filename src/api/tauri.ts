@@ -177,15 +177,15 @@ export async function listLocalFolder(path: string): Promise<LocalFileEntry[]> {
 }
 
 export async function renameLocalPath(oldPath: string, newName: string): Promise<void> {
-  return invoke<void>("rename_local_path", { oldPath, newName });
+  await invoke("rename_local_path", { oldPath, newName });
 }
 
 export async function deleteLocalPath(path: string): Promise<void> {
-  return invoke<void>("delete_local_path", { path });
+  await invoke("delete_local_path", { path });
 }
 
 export async function revealInFinder(path: string): Promise<void> {
-  return invoke<void>("reveal_in_finder", { path });
+  await invoke("reveal_in_finder", { path });
 }
 
 // ── Phase 5 — Terminal ────────────────────────────────────────────────────────

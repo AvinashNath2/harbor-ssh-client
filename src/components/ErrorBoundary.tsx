@@ -1,7 +1,11 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-interface Props { children: ReactNode; }
-interface State { error: Error | null; }
+interface Props {
+  children: ReactNode;
+}
+interface State {
+  error: Error | null;
+}
 
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
@@ -31,7 +35,9 @@ export class ErrorBoundary extends Component<Props, State> {
             </pre>
           </div>
           <button
-            onClick={() => { this.setState({ error: null }); }}
+            onClick={() => {
+              this.setState({ error: null });
+            }}
             className="rounded-input border border-border-input bg-surface-chip px-4 py-2 text-[12.5px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
           >
             Try to recover
