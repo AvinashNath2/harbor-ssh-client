@@ -1,7 +1,15 @@
 {
-  "name": "remote-vm-explorer",
-  "private": true,
+  "name": "harborscp",
   "version": "0.1.0",
+  "description": "A native SSH/SFTP desktop client for developers — built with Tauri + Rust",
+  "author": "Avinash Nath <avinashnath2@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AvinashNath2/harbor-ssh-client.git"
+  },
+  "homepage": "https://github.com/AvinashNath2/harbor-ssh-client#readme",
+  "keywords": ["ssh", "sftp", "tauri", "desktop", "file-manager", "terminal", "rust", "port-forwarding"],
   "type": "module",
   "scripts": {
     "dev": "vite",

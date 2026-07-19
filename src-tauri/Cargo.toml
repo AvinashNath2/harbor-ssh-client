@@ -1,8 +1,13 @@
 [package]
-name = "remote-vm-explorer"
+name = "harborscp"
 version = "0.1.0"
-description = "A native desktop SSH file manager"
-authors = []
+description = "A native SSH/SFTP desktop client for developers — built with Tauri + Rust"
+authors = ["Avinash Nath <avinashnath2@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/AvinashNath2/harbor-ssh-client"
+homepage = "https://github.com/AvinashNath2/harbor-ssh-client"
+keywords = ["ssh", "sftp", "tauri", "desktop"]
+categories = ["network-programming", "filesystem"]
 edition = "2021"
 
 [lib]
