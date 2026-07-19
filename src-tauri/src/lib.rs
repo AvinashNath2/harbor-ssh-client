@@ -27,6 +27,22 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .expect("failed to resolve app data dir");
+
+            // One-time migration: copy data from the old bundle identifier directory
+            // (com.remotevmexplorer.app) used before the app was renamed to HarborSCP.
+            if let Some(parent) = dir.parent() {
+                let old_dir = parent.join("com.remotevmexplorer.app");
+                if old_dir.exists() {
+                    for file in ["connections.json", "sessions.db"] {
+                        let src = old_dir.join(file);
+                        let dst = dir.join(file);
+                        if src.exists() && !dst.exists() {
+                            let _ = std::fs::copy(&src, &dst);
+                        }
+                    }
+                }
+            }
+
             let database = db::Db::open(dir).expect("failed to open session database");
             app.manage(database);
             Ok(())
