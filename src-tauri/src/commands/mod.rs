@@ -1,5 +1,6 @@
 pub mod connect;
 pub mod disconnect;
+pub mod downloads;
 pub mod fs;
 pub mod local_fs;
 pub mod ping;
@@ -12,6 +13,7 @@ pub mod terminal;
 
 pub use connect::{connect, reconnect, test_connection};
 pub use disconnect::disconnect;
+pub use downloads::{clear_download_history, delete_download, list_downloads, save_download};
 pub use fs::{
     cancel_transfer, chmod_file, compute_folder_size, create_folder, delete_path, download_file,
     download_file_queued, get_file_info, list_folder, read_file_preview, rename_path, upload_file,

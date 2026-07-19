@@ -412,3 +412,37 @@ export interface SshConfigHost {
 export async function parseSshConfig(): Promise<SshConfigHost[]> {
   return invoke<SshConfigHost[]>("parse_ssh_config");
 }
+
+// ── Download history ──────────────────────────────────────────────────────────
+
+export interface DownloadRecord {
+  id: string;
+  name: string;
+  localPath: string;
+  remotePath: string;
+  downloadedAt: number;
+  fileSize: number;
+  available: boolean;
+}
+
+export async function saveDownload(
+  id: string,
+  name: string,
+  localPath: string,
+  remotePath: string,
+  fileSize: number,
+): Promise<void> {
+  await invoke("save_download", { id, name, localPath, remotePath, fileSize });
+}
+
+export async function listDownloads(): Promise<DownloadRecord[]> {
+  return invoke<DownloadRecord[]>("list_downloads");
+}
+
+export async function deleteDownload(id: string): Promise<void> {
+  await invoke("delete_download", { id });
+}
+
+export async function clearDownloadHistory(): Promise<void> {
+  await invoke("clear_download_history");
+}

@@ -38,7 +38,16 @@ impl Db {
                original_output_bytes INTEGER NOT NULL DEFAULT 0
              );
              CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(started_at DESC);
-             CREATE INDEX IF NOT EXISTS idx_cmds_sess ON commands(session_id, idx);",
+             CREATE INDEX IF NOT EXISTS idx_cmds_sess ON commands(session_id, idx);
+             CREATE TABLE IF NOT EXISTS downloads (
+               id            TEXT PRIMARY KEY,
+               name          TEXT NOT NULL,
+               local_path    TEXT NOT NULL,
+               remote_path   TEXT NOT NULL,
+               downloaded_at INTEGER NOT NULL,
+               file_size     INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE INDEX IF NOT EXISTS idx_downloads_date ON downloads(downloaded_at DESC);",
         )?;
         // Migrate existing DBs that were created before profile columns were added.
         let has_profile: i64 = conn

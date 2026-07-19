@@ -10,6 +10,7 @@ import {
   type ConnectionProfile,
   type FileEntry,
 } from "./api";
+import { DownloadHistoryPanel } from "./components/DownloadHistoryPanel";
 import { PortForwardPanel } from "./components/PortForwardPanel";
 import { PreviewModal } from "./components/PreviewModal";
 import { SessionLogPage } from "./components/SessionLogPage";
@@ -36,6 +37,7 @@ import { useConnectionWatchdog } from "./hooks/useConnectionWatchdog";
 import { useFileOps } from "./hooks/useFileOps";
 import { useLocalFiles } from "./hooks/useLocalFiles";
 import { useNotifications } from "./hooks/useNotifications";
+import { useDownloadHistory } from "./hooks/useDownloadHistory";
 import { usePortForwards } from "./hooks/usePortForwards";
 import { useProfiles } from "./hooks/useProfiles";
 import { useResizable } from "./hooks/useResizable";
@@ -554,6 +556,22 @@ function ConnectedApp({
   // Phase 6 — Transfer queue
   const queue = useTransferQueue();
 
+  // Download history (persisted in SQLite)
+  const dlHistory = useDownloadHistory();
+  const prevTransfersRef = useRef(queue.transfers);
+  useEffect(() => {
+    const prev = prevTransfersRef.current;
+    for (const t of queue.transfers) {
+      if (t.direction === "download" && t.status === "done") {
+        const wasDone = prev.some((p) => p.id === t.id && p.status === "done");
+        if (!wasDone) {
+          void dlHistory.record(t.id, t.name, t.localPath, t.remotePath, t.total);
+        }
+      }
+    }
+    prevTransfersRef.current = queue.transfers;
+  }, [queue.transfers, dlHistory]);
+
   // Resizable panels (persisted per user in localStorage)
   const [sidebarWidth, startSidebarResize] = useResizable(250, "x", {
     min: 200,
@@ -799,6 +817,10 @@ function ConnectedApp({
         }}
         showTunnels={showTunnels}
         onShowLog={onShowLog}
+        onShowDownloads={() => {
+          void dlHistory.openPanel();
+        }}
+        downloadRecords={dlHistory.records}
       />
 
       {/* Main content area */}
@@ -1032,6 +1054,25 @@ function ConnectedApp({
           }}
           onCancel={() => {
             setShowNewFile(false);
+          }}
+        />
+      )}
+
+      {/* Download history panel */}
+      {dlHistory.open && (
+        <DownloadHistoryPanel
+          records={dlHistory.records}
+          onClose={() => {
+            dlHistory.setOpen(false);
+          }}
+          onReveal={(path) => {
+            void revealInFinder(path);
+          }}
+          onRemove={(id) => {
+            void dlHistory.remove(id);
+          }}
+          onClearAll={() => {
+            void dlHistory.clearAll();
           }}
         />
       )}
