@@ -457,6 +457,7 @@ export interface DockerContainer {
   state: string;
   created_at: string;
   ports: string;
+  networks: string;
   compose_project: string | null;
   compose_service: string | null;
 }

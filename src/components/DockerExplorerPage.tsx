@@ -17,12 +17,13 @@ import {
   ReactFlow,
   useEdgesState,
   useNodesState,
+  type Edge,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useDockerExplorer } from "../hooks/useDockerExplorer";
-import type { ContainerStats, DockerContainer } from "../api";
+import type { ContainerStats, DockerContainer, DockerNetwork } from "../api";
 
 interface DockerExplorerPageProps {
   onClose: () => void;
@@ -31,7 +32,7 @@ interface DockerExplorerPageProps {
 type FilterType = "all" | "running" | "stopped" | "compose";
 type ViewMode = "graph" | "list";
 
-// ── Custom React Flow node ────────────────────────────────────────────────────
+// ── Custom React Flow nodes ───────────────────────────────────────────────────
 
 interface ContainerNodeData extends Record<string, unknown> {
   container: DockerContainer;
@@ -45,11 +46,19 @@ function containerColor(state: string) {
   return "#e5534b";
 }
 
+function parseHealth(status: string): "healthy" | "unhealthy" | "starting" | null {
+  if (status.includes("(healthy)")) return "healthy";
+  if (status.includes("(unhealthy)")) return "unhealthy";
+  if (status.includes("(health: starting)")) return "starting";
+  return null;
+}
+
 const ContainerNodeComponent = memo(function ContainerNodeComponent({
   data,
 }: NodeProps) {
   const { container, isSelected, onSelect } = data as ContainerNodeData;
   const color = containerColor(container.state);
+  const health = parseHealth(container.status);
   return (
     <div
       onClick={() => { onSelect(container.id); }}
@@ -74,6 +83,15 @@ const ContainerNodeComponent = memo(function ContainerNodeComponent({
         {container.image.split(":")[0]}
       </div>
       <div className="mt-0.5 text-[10px] text-text-secondary">{container.status}</div>
+      {health && (
+        <div className={`mt-1 rounded-[4px] px-1.5 py-0.5 text-[9px] font-semibold ${
+          health === "healthy" ? "bg-success/10 text-success" :
+          health === "unhealthy" ? "bg-danger/10 text-danger" :
+          "bg-warning/10 text-warning"
+        }`}>
+          {health}
+        </div>
+      )}
       {container.compose_project && (
         <div className="mt-1 rounded-[4px] bg-accent/[0.08] px-1.5 py-0.5 text-[9.5px] font-medium text-accent-dark">
           {container.compose_project}
@@ -84,7 +102,25 @@ const ContainerNodeComponent = memo(function ContainerNodeComponent({
   );
 });
 
-const nodeTypes = { container: ContainerNodeComponent };
+const NetworkNodeComponent = memo(function NetworkNodeComponent({ data }: NodeProps) {
+  const { network } = data as { network: DockerNetwork };
+  return (
+    <div className="rounded-full border border-[#3f7be055] bg-[#3f7be011] px-3 py-1.5"
+      style={{ boxShadow: "0 2px 8px -4px rgba(63,123,224,0.3)" }}>
+      <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
+      <div className="flex items-center gap-1.5">
+        <span className="h-2 w-2 flex-shrink-0 rounded-full bg-accent-dark" />
+        <span className="font-mono text-[11px] font-semibold text-accent-dark">{network.name}</span>
+      </div>
+      <div className="mt-0.5 text-[9.5px] text-text-faint">{network.driver}</div>
+    </div>
+  );
+});
+
+const nodeTypes = {
+  container: ContainerNodeComponent,
+  network: NetworkNodeComponent,
+};
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -259,6 +295,7 @@ export function DockerExplorerPage({ onClose }: DockerExplorerPageProps) {
             ) : viewMode === "graph" ? (
               <DockerGraph
                 containers={filteredContainers}
+                networks={docker.networks}
                 selectedId={selectedId}
                 onSelect={handleSelect}
               />
@@ -308,34 +345,73 @@ function StatCell({
 
 // ── Graph view ────────────────────────────────────────────────────────────────
 
-function DockerGraph({
-  containers,
-  selectedId,
-  onSelect,
-}: {
+interface DockerGraphProps {
   containers: DockerContainer[];
+  networks: DockerNetwork[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-}) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<ContainerNodeData>>([]);
-  const [edges, , onEdgesChange] = useEdgesState([]);
+}
+
+function DockerGraph({
+  containers,
+  networks,
+  selectedId,
+  onSelect,
+}: DockerGraphProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
 
   useEffect(() => {
-    setNodes(
-      containers.map((c, i) => ({
-        id: `c-${c.id}`,
-        type: "container",
-        position: { x: (i % 4) * 240, y: Math.floor(i / 4) * 150 },
-        data: {
-          container: c,
-          isSelected: selectedId === c.id,
-          onSelect,
-        } satisfies ContainerNodeData,
-      })),
+    const containerNodes: Node[] = containers.map((c, i) => ({
+      id: `c-${c.id}`,
+      type: "container",
+      position: { x: (i % 4) * 240, y: Math.floor(i / 4) * 200 },
+      data: {
+        container: c,
+        isSelected: selectedId === c.id,
+        onSelect,
+      } satisfies ContainerNodeData,
+    }));
+
+    const containerNetworkNames = new Set(
+      containers.flatMap(c => c.networks.split(",").map(n => n.trim()).filter(Boolean))
     );
-    // setNodes is stable; omitting from deps is intentional
+
+    const usedNetworks = networks.filter(n =>
+      !["bridge", "host", "none"].includes(n.name) && containerNetworkNames.has(n.name)
+    );
+
+    const totalNetworkWidth = Math.max(usedNetworks.length * 220, containers.length * 240);
+    const networkNodes: Node[] = usedNetworks.map((n, i) => ({
+      id: `net-${n.id}`,
+      type: "network",
+      position: { x: i * 220 + (totalNetworkWidth - usedNetworks.length * 220) / 2, y: Math.ceil(containers.length / 4) * 200 + 60 },
+      data: { network: n },
+    }));
+
+    const networkIdByName = new Map(usedNetworks.map(n => [n.name, n.id]));
+    const newEdges: Edge[] = [];
+    containers.forEach(c => {
+      const cNetworks = c.networks.split(",").map(n => n.trim()).filter(Boolean);
+      cNetworks.forEach(netName => {
+        const netId = networkIdByName.get(netName);
+        if (netId) {
+          newEdges.push({
+            id: `e-${c.id}-${netId}`,
+            source: `c-${c.id}`,
+            target: `net-${netId}`,
+            style: { stroke: "#3f7be044", strokeWidth: 1.5 },
+            animated: c.state === "running",
+          });
+        }
+      });
+    });
+
+    setNodes([...containerNodes, ...networkNodes]);
+    setEdges(newEdges);
+    // setNodes and setEdges are stable refs; omitting from deps is intentional
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containers, selectedId, onSelect]);
+  }, [containers, networks, selectedId, onSelect]);
 
   return (
     <div className="h-full w-full">
@@ -358,7 +434,7 @@ function DockerGraph({
         <MiniMap
           nodeColor={(n) => {
             const c = containers.find((ct) => `c-${ct.id}` === n.id);
-            return c ? containerColor(c.state) : "#ccc";
+            return c ? containerColor(c.state) : "#3f7be066";
           }}
           style={{ background: "var(--color-surface-pane, #fff)" }}
         />
@@ -425,7 +501,7 @@ function ContainerListView({
 
 // ── Inspector panel (read-only) ───────────────────────────────────────────────
 
-type InspectorTab = "overview" | "logs" | "stats" | "inspect";
+type InspectorTab = "overview" | "env" | "mounts" | "networks" | "ports" | "logs" | "stats" | "inspect";
 
 function InspectorPanel({
   container,
@@ -451,7 +527,10 @@ function InspectorPanel({
     setStats(null);
     setInspect(null);
     setTab("overview");
-  }, [container.id]);
+    void getInspect(container.id)
+      .then(setInspect)
+      .catch(() => { /* silently ignore */ });
+  }, [container.id, getInspect]);
 
   useEffect(() => {
     if (tab === "logs" && logs === null) {
@@ -464,12 +543,7 @@ function InspectorPanel({
         .then(setStats)
         .catch(() => { /* silently ignore */ });
     }
-    if (tab === "inspect" && inspect === null) {
-      void getInspect(container.id)
-        .then(setInspect)
-        .catch(() => { /* silently ignore */ });
-    }
-  }, [tab, container.id, logs, stats, inspect, getLogs, getStats, getInspect]);
+  }, [tab, container.id, logs, stats, getLogs, getStats]);
 
   function copyId() {
     void navigator.clipboard.writeText(container.id);
@@ -478,6 +552,19 @@ function InspectorPanel({
   }
 
   const color = containerColor(container.state);
+
+  const firstInspect = (inspect as Record<string, unknown>[] | null)?.[0];
+  const configObj = firstInspect?.Config as Record<string, unknown> | undefined;
+  const envVars: string[] = (configObj?.Env as string[] | undefined) ?? [];
+  const mounts: { Type: string; Source: string; Destination: string; Mode: string; RW: boolean }[] =
+    (firstInspect?.Mounts as { Type: string; Source: string; Destination: string; Mode: string; RW: boolean }[] | undefined) ?? [];
+  const networkSettings = firstInspect?.NetworkSettings as Record<string, unknown> | undefined;
+  const networksObj: Record<string, { IPAddress?: string; Gateway?: string; MacAddress?: string }> =
+    (networkSettings?.Networks as Record<string, { IPAddress?: string; Gateway?: string; MacAddress?: string }> | undefined) ?? {};
+  const networkEntries = Object.entries(networksObj);
+  const portsObj: Record<string, { HostIp: string; HostPort: string }[] | null> =
+    (networkSettings?.Ports as Record<string, { HostIp: string; HostPort: string }[] | null> | undefined) ?? {};
+  const portEntries = Object.entries(portsObj);
 
   return (
     <div className="flex w-[320px] flex-none flex-col border-l border-border bg-surface-pane">
@@ -518,12 +605,12 @@ function InspectorPanel({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-border">
-        {(["overview", "logs", "stats", "inspect"] as InspectorTab[]).map((t) => (
+      <div className="flex flex-wrap border-b border-border">
+        {(["overview", "env", "mounts", "networks", "ports", "logs", "stats", "inspect"] as InspectorTab[]).map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); }}
-            className={`flex-1 py-2 text-[11px] font-medium capitalize transition-colors ${
+            className={`px-2.5 py-2 text-[10.5px] font-medium capitalize transition-colors ${
               tab === t
                 ? "border-b-2 border-accent-dark text-accent-dark"
                 : "text-text-faint hover:text-text-secondary"
@@ -547,6 +634,68 @@ function InspectorPanel({
             {container.compose_service && (
               <InfoRow label="Service" value={container.compose_service} />
             )}
+          </div>
+        )}
+        {tab === "env" && (
+          <div className="divide-y divide-border">
+            {envVars.length === 0 ? (
+              <div className="p-4 text-[12px] text-text-faint">No environment variables</div>
+            ) : envVars.map((entry, i) => {
+              const eq = entry.indexOf("=");
+              const key = eq >= 0 ? entry.slice(0, eq) : entry;
+              const val = eq >= 0 ? entry.slice(eq + 1) : "";
+              return (
+                <div key={i} className="flex items-start gap-2 px-4 py-1.5">
+                  <span className="w-[140px] flex-shrink-0 truncate font-mono text-[10px] font-semibold text-accent-dark">{key}</span>
+                  <span className="flex-1 break-all font-mono text-[10px] text-text-secondary">{val}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {tab === "mounts" && (
+          <div className="divide-y divide-border">
+            {mounts.length === 0 ? (
+              <div className="p-4 text-[12px] text-text-faint">No mounts</div>
+            ) : mounts.map((m, i) => (
+              <div key={i} className="px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className={`rounded-[4px] px-1.5 py-0.5 font-mono text-[9px] font-semibold ${m.Type === "volume" ? "bg-accent/10 text-accent-dark" : "bg-surface-chip text-text-secondary"}`}>{m.Type}</span>
+                  <span className={`text-[10px] ${m.RW ? "text-success" : "text-text-faint"}`}>{m.RW ? "read-write" : "read-only"}</span>
+                </div>
+                <div className="mt-1 font-mono text-[10px] text-text-faint">{m.Source}</div>
+                <div className="mt-0.5 font-mono text-[10.5px] font-medium text-text-primary">→ {m.Destination}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {tab === "networks" && (
+          <div className="divide-y divide-border">
+            {networkEntries.length === 0 ? (
+              <div className="p-4 text-[12px] text-text-faint">No networks</div>
+            ) : networkEntries.map(([name, info]) => (
+              <div key={name} className="px-4 py-2.5">
+                <div className="text-[12px] font-semibold text-text-primary">{name}</div>
+                {info.IPAddress && <div className="mt-0.5 font-mono text-[10.5px] text-text-secondary">IP: {info.IPAddress}</div>}
+                {info.Gateway && <div className="mt-0.5 font-mono text-[10px] text-text-faint">Gateway: {info.Gateway}</div>}
+                {info.MacAddress && <div className="mt-0.5 font-mono text-[10px] text-text-faint">MAC: {info.MacAddress}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+        {tab === "ports" && (
+          <div className="divide-y divide-border">
+            {portEntries.length === 0 ? (
+              <div className="p-4 text-[12px] text-text-faint">No port mappings</div>
+            ) : portEntries.map(([portProto, bindings]) => (
+              <div key={portProto} className="flex items-center gap-3 px-4 py-2">
+                <span className="font-mono text-[11px] font-semibold text-text-primary">{portProto}</span>
+                <span className="text-text-faint">→</span>
+                <span className="font-mono text-[11px] text-text-secondary">
+                  {bindings?.map(b => `${b.HostIp === "0.0.0.0" ? "" : b.HostIp + ":"}${b.HostPort}`).join(", ") ?? "not published"}
+                </span>
+              </div>
+            ))}
           </div>
         )}
         {tab === "logs" && (

@@ -23,6 +23,8 @@ pub struct DockerContainer {
     pub ports: String,
     #[serde(rename = "Labels")]
     pub labels: String,
+    #[serde(rename = "Networks")]
+    pub networks: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -34,6 +36,7 @@ pub struct DockerContainerParsed {
     pub state: String,
     pub created_at: String,
     pub ports: String,
+    pub networks: String,
     pub compose_project: Option<String>,
     pub compose_service: Option<String>,
 }
@@ -152,6 +155,7 @@ pub async fn list_docker_containers(
                 state: c.state,
                 created_at: c.created_at,
                 ports: c.ports,
+                networks: c.networks,
             })
             .collect();
         Ok(items)
