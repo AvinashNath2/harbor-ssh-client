@@ -536,3 +536,11 @@ export async function dockerImageAction(
 ): Promise<void> {
   await invoke("docker_image_action", { id, action });
 }
+
+export async function dockerContainerEvents(id: string): Promise<string> {
+  return invoke<string>("docker_container_events", { id });
+}
+
+export async function dockerAllContainerStats(): Promise<ContainerStats[]> {
+  return invoke<ContainerStats[]>("docker_all_container_stats");
+}

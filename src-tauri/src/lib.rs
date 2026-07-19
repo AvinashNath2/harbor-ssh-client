@@ -7,9 +7,10 @@ use commands::{
     append_command, cancel_transfer, chmod_file, clear_download_history, close_session,
     close_terminal, compute_folder_size, connect, connection_status, create_folder, create_session,
     delete_download, delete_local_path, delete_path, delete_profile, delete_session,
-    delete_sessions_before, disconnect, docker_available, docker_container_action,
-    docker_container_inspect, docker_container_logs, docker_container_stats, docker_image_action,
-    download_file, download_file_queued, get_file_info, get_local_home, list_compose_projects,
+    delete_sessions_before, disconnect, docker_all_container_stats, docker_available,
+    docker_container_action, docker_container_events, docker_container_inspect,
+    docker_container_logs, docker_container_stats, docker_image_action, download_file,
+    download_file_queued, get_file_info, get_local_home, list_compose_projects,
     list_docker_containers, list_docker_images, list_docker_networks, list_docker_volumes,
     list_downloads, list_folder, list_local_folder, list_port_forwards, list_profiles,
     list_sessions, load_session, open_terminal, parse_ssh_config, ping, ping_connection,
@@ -112,6 +113,8 @@ pub fn run() {
             docker_container_stats,
             docker_container_action,
             docker_image_action,
+            docker_container_events,
+            docker_all_container_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -349,6 +349,58 @@ pub async fn docker_container_action(
 }
 
 #[tauri::command]
+pub async fn docker_container_events(
+    state: tauri::State<'_, SshState>,
+    id: String,
+) -> Result<String, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let escaped = crate::ssh::shell_single_quote(&id)
+            .ok_or_else(|| AppError::internal("Container ID contains invalid characters"))?;
+        let output = bundle
+            .exec(&format!(
+                "docker events --filter 'container={escaped}' --since 24h --until $(date +%s) --format '{{{{.Time}}}} {{{{.Type}}}} {{{{.Action}}}}' 2>/dev/null | tail -100"
+            ))
+            .unwrap_or_default();
+        Ok(if output.trim().is_empty() {
+            "(no events in the last 24 hours)".to_owned()
+        } else {
+            output
+        })
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+#[tauri::command]
+pub async fn docker_all_container_stats(
+    state: tauri::State<'_, SshState>,
+) -> Result<Vec<ContainerStats>, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let output = bundle
+            .exec("docker stats --no-stream --format '{{json .}}' 2>/dev/null")
+            .unwrap_or_default();
+        let items: Vec<ContainerStats> = output
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+        Ok(items)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+#[tauri::command]
 pub async fn docker_image_action(
     state: tauri::State<'_, SshState>,
     id: String,

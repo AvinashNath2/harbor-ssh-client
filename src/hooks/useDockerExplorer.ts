@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  dockerAllContainerStats,
   dockerAvailable,
+  dockerContainerEvents,
   dockerContainerInspect,
   dockerContainerLogs,
   dockerContainerStats,
@@ -26,6 +28,8 @@ export interface DockerState {
   networks: DockerNetwork[];
   volumes: DockerVolume[];
   projects: ComposeProject[];
+  /** Keyed by container name (without leading slash) */
+  allStats: Map<string, ContainerStats>;
 }
 
 export function useDockerExplorer() {
@@ -38,6 +42,7 @@ export function useDockerExplorer() {
     networks: [],
     volumes: [],
     projects: [],
+    allStats: new Map(),
   });
 
   const mountedRef = useRef(true);
@@ -58,6 +63,11 @@ export function useDockerExplorer() {
         listDockerVolumes().catch(() => [] as DockerVolume[]),
         listComposeProjects().catch(() => [] as ComposeProject[]),
       ]);
+
+      // One SSH call fetches stats for all running containers
+      const statsArr = await dockerAllContainerStats().catch(() => [] as ContainerStats[]);
+      const allStats = new Map(statsArr.map((s) => [s.name, s]));
+
       if (mountedRef.current) {
         setState({
           available: true,
@@ -68,6 +78,7 @@ export function useDockerExplorer() {
           networks,
           volumes,
           projects,
+          allStats,
         });
       }
     } catch (e) {
@@ -99,6 +110,7 @@ export function useDockerExplorer() {
     getLogs: dockerContainerLogs,
     getStats: dockerContainerStats,
     getInspect: dockerContainerInspect,
+    getEvents: dockerContainerEvents,
   };
 }
 
