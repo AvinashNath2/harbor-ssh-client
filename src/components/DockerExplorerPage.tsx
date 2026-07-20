@@ -20,7 +20,6 @@ import {
   Background,
   Controls,
   Handle,
-  MarkerType,
   MiniMap,
   Position,
   ReactFlow,
@@ -116,8 +115,6 @@ const SERVICE_CONFIG: Record<ServiceType, ServiceConfig> = {
   app:        { Icon: Box,      color: "#6b7280", bg: "transparent",             label: ""           },
 };
 
-const INFRA_TYPES = new Set<ServiceType>(["database", "cache", "broker"]);
-const APP_TYPES   = new Set<ServiceType>(["backend", "frontend", "app"]);
 
 function detectCategory(c: DockerContainer): Set<string> {
   const img = c.image.toLowerCase();
@@ -681,29 +678,6 @@ function DockerGraph({
         });
       });
 
-      // Inferred service dependency edges: app/backend → database/cache/broker within group
-      projContainers.forEach((appC) => {
-        if (!APP_TYPES.has(detectServiceType(appC))) return;
-        projContainers.forEach((infraC) => {
-          const infraType = detectServiceType(infraC);
-          if (!INFRA_TYPES.has(infraType)) return;
-          const cfg = SERVICE_CONFIG[infraType];
-          newEdges.push({
-            id: `dep-${appC.id}-${infraC.id}`,
-            source: `c-${appC.id}`,
-            target: `c-${infraC.id}`,
-            style: { stroke: cfg.color + "77", strokeWidth: 1.5, strokeDasharray: "4 3" },
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              width: 10,
-              height: 10,
-              color: cfg.color + "99",
-            },
-            animated: appC.state === "running" && infraC.state === "running",
-          });
-        });
-      });
-
       curX += groupW + GROUP_GAP;
       maxHInRow = Math.max(maxHInRow, groupH);
       projInRow++;
@@ -730,29 +704,6 @@ function DockerGraph({
           stats: allStats.get(c.name.replace(/^\//, "")) ?? null,
           serviceType: detectServiceType(c),
         } satisfies ContainerNodeData,
-      });
-    });
-
-    // Inferred edges among standalone containers
-    standalone.forEach((appC) => {
-      if (!APP_TYPES.has(detectServiceType(appC))) return;
-      standalone.forEach((infraC) => {
-        const infraType = detectServiceType(infraC);
-        if (!INFRA_TYPES.has(infraType)) return;
-        const cfg = SERVICE_CONFIG[infraType];
-        newEdges.push({
-          id: `dep-${appC.id}-${infraC.id}`,
-          source: `c-${appC.id}`,
-          target: `c-${infraC.id}`,
-          style: { stroke: cfg.color + "77", strokeWidth: 1.5, strokeDasharray: "4 3" },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 10,
-            height: 10,
-            color: cfg.color + "99",
-          },
-          animated: appC.state === "running" && infraC.state === "running",
-        });
       });
     });
 
