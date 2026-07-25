@@ -37,7 +37,7 @@ jobs:
             target: ''
             label: Linux
 
-          # Windows — produces .msi + NSIS installer
+          # Windows — produces .msi + NSIS installer + portable ZIP
           - platform: windows-latest
             args: ''
             target: ''
@@ -96,16 +96,54 @@ jobs:
             ## HarborSCP ${{ github.ref_name }}
 
             ### Downloads
-            | Platform | File |
-            |----------|------|
-            | macOS Apple Silicon | `HarborSCP_*_aarch64.dmg` |
-            | macOS Intel | `HarborSCP_*_x64.dmg` |
-            | macOS Universal | `HarborSCP_*_universal.dmg` |
-            | Linux | `harbor-scp_*_amd64.AppImage` · `harbor-scp_*_amd64.deb` |
-            | Windows | `HarborSCP_*_x64-setup.exe` · `HarborSCP_*_x64_en-US.msi` |
+
+            | Platform | Installer | Portable (no install needed) |
+            |----------|-----------|------------------------------|
+            | macOS Apple Silicon | `HarborSCP_*_aarch64.dmg` | — |
+            | macOS Intel | `HarborSCP_*_x64.dmg` | — |
+            | macOS Universal | `HarborSCP_*_universal.dmg` | — |
+            | Linux | `harbor-scp_*_amd64.AppImage` · `harbor-scp_*_amd64.deb` | — |
+            | Windows | `HarborSCP_*_x64-setup.exe` · `HarborSCP_*_x64_en-US.msi` | `HarborSCP_*_x64_portable.zip` ← extract & run |
+
+            > **Corporate laptop?** Download the portable ZIP — no installation or admin rights required.
+            > Extract the folder and run `HarborSCP.exe` directly.
 
             ### What's new
             See the [CHANGELOG](https://github.com/AvinashNath2/harbor-ssh-client/blob/main/CHANGELOG.md) for full release notes.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # ── Windows-only: package a portable ZIP (extract & run, no install needed) ──
+      - name: Create portable ZIP (Windows)
+        if: matrix.label == 'Windows'
+        shell: pwsh
+        run: |
+          # Tauri names the binary after productName in tauri.conf.json
+          $exePath = "src-tauri\target\release\HarborSCP.exe"
+          if (-not (Test-Path $exePath)) {
+            # Fallback: search for any .exe in the release dir
+            $exePath = Get-ChildItem "src-tauri\target\release\" -Filter "*.exe" `
+              | Where-Object { $_.Name -notmatch "build|deps|examples" } `
+              | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if ($exePath) {
+            Write-Host "Packaging: $exePath"
+            $zipName = "HarborSCP_${{ github.ref_name }}_x64_portable.zip"
+            Compress-Archive -Path $exePath -DestinationPath $zipName -Force
+            Write-Host "Created: $zipName"
+          } else {
+            Write-Error "Could not find HarborSCP.exe — listing release dir:"
+            Get-ChildItem "src-tauri\target\release\" -Filter "*.exe"
+            exit 1
+          }
+
+      - name: Upload portable ZIP to release
+        if: matrix.label == 'Windows'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "HarborSCP_${{ github.ref_name }}_x64_portable.zip" \
+            --clobber
