@@ -21,7 +21,11 @@ export interface Tab {
  *   true  → the caller successfully reconnected; loadDir will retry once.
  *   false → give up; the tab shows an error.
  */
-export function useTabs(homeDir: string, connectionLabel: string, onConnectionLost?: () => Promise<boolean>) {
+export function useTabs(
+  homeDir: string,
+  connectionLabel: string,
+  onConnectionLost?: () => Promise<boolean>,
+) {
   // Stable ref so the initial tab's ID is the same object across renders.
   const firstTabRef = useRef(makeTab(homeDir, connectionLabel));
 

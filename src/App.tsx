@@ -10,6 +10,12 @@ import {
   type ConnectionProfile,
   type FileEntry,
 } from "./api";
+import { ChatPanel } from "./components/ChatPanel";
+import { DockerExplorerPage } from "./components/DockerExplorerPage";
+import { DockerPreflight } from "./components/DockerPreflight";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { PageContextProvider } from "./context/PageContext";
+import { askChat } from "./lib/terminalBus";
 import { DownloadHistoryPanel } from "./components/DownloadHistoryPanel";
 import { PortForwardPanel } from "./components/PortForwardPanel";
 import { PreviewModal } from "./components/PreviewModal";
@@ -43,6 +49,7 @@ import { useProfiles } from "./hooks/useProfiles";
 import { useResizable } from "./hooks/useResizable";
 import { useTabs } from "./hooks/useTabs";
 import { useTransferQueue } from "./hooks/useTransferQueue";
+import { FEATURES } from "./lib/features";
 
 export default function App() {
   const { state, connect, disconnect } = useConnection();
@@ -61,6 +68,9 @@ export default function App() {
   });
   const [pwPromptFor, setPwPromptFor] = useState<ConnectionProfile | null>(null);
   const [activeProfile, setActiveProfile] = useState<ConnectionProfile | null>(null);
+  // Tracks a direct-click profile connect (key-auth) so we can show a
+  // connecting overlay instead of the full new-session modal.
+  const [connectingProfile, setConnectingProfile] = useState<ConnectionProfile | null>(null);
 
   // Kill the WebKit default context menu ("Inspect Element", "Reload", etc).
   useEffect(() => {
@@ -105,7 +115,7 @@ export default function App() {
 
   /**
    * Click-to-connect for saved sidebar profiles:
-   * - key-auth: connect immediately with saved keyPath
+   * - key-auth: show ConnectingOverlay + connect immediately
    * - password-auth: show the compact password prompt
    */
   function directConnectProfile(profile: ConnectionProfile) {
@@ -119,6 +129,7 @@ export default function App() {
           key_path: profile.keyPath ?? "~/.ssh/id_rsa",
         },
       };
+      setConnectingProfile(profile);
       void handleConnect(args, profile);
     } else {
       setPwPromptFor(profile);
@@ -143,6 +154,11 @@ export default function App() {
   useEffect(() => {
     if (pwPromptFor && state.status === "connected") setPwPromptFor(null);
   }, [pwPromptFor, state.status]);
+
+  // Clear connecting overlay when connection succeeds.
+  useEffect(() => {
+    if (connectingProfile && state.status === "connected") setConnectingProfile(null);
+  }, [connectingProfile, state.status]);
 
   async function handleStarProfile(profile: ConnectionProfile) {
     await save({ ...profile, favorite: !profile.favorite });
@@ -229,126 +245,142 @@ export default function App() {
   });
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {showSessionLog && (
-        <SessionLogPage
-          onClose={() => {
-            setShowSessionLog(false);
-          }}
-        />
-      )}
-      {showImport && (
-        <SshConfigImportModal
-          existingProfiles={profiles}
-          onImport={(imp) => {
-            void handleImportProfiles(imp);
-          }}
-          onClose={() => {
-            setShowImport(false);
-          }}
-        />
-      )}
-      {pwPromptFor && (
-        <PasswordPrompt
-          profile={pwPromptFor}
-          isLoading={isConnecting}
-          error={state.status === "error" ? state.error.message : null}
-          onSubmit={submitPasswordPrompt}
-          onCancel={() => {
-            setPwPromptFor(null);
-          }}
-        />
-      )}
-      {reconnectStatus.kind === "reconnecting" && (
-        <ReconnectingBanner
-          status="reconnecting"
-          host={reconnectStatus.host}
-          attempt={reconnectStatus.attempt}
-          maxAttempts={reconnectStatus.max}
-        />
-      )}
-      {reconnectStatus.kind === "failed" && (
-        <ReconnectingBanner
-          status="failed"
-          host={reconnectStatus.host}
-          attempt={0}
-          maxAttempts={0}
-          reason={reconnectStatus.reason}
-          onDismiss={() => {
-            setReconnectStatus({ kind: "idle" });
-          }}
-        />
-      )}
-      {isConnected ? (
-        <ConnectedApp
-          result={state.result}
-          profiles={profiles}
-          activeProfile={activeProfile}
-          activeHost={activeHost}
-          existingFolders={existingFolders}
-          prefillProfile={prefillProfile}
-          onDisconnect={() => {
-            void disconnect();
-            openModal(null);
-          }}
-          onConnectionLost={handleConnectionLost}
-          onConnect={(args) => {
-            void connect(args);
-          }}
-          onSaveProfile={save}
-          onDeleteProfile={remove}
-          onSelectProfile={directConnectProfile}
-          onEditProfile={openModal}
-          onStarProfile={(p) => {
-            void handleStarProfile(p);
-          }}
-          onImportSshConfig={() => {
-            setShowImport(true);
-          }}
-          sidebarHidden={sidebarHidden}
-          onToggleSidebar={toggleSidebar}
-          onShowLog={() => {
-            setShowSessionLog(true);
-          }}
-        />
-      ) : (
-        <DisconnectedApp
-          profiles={profiles}
-          activeHost={null}
-          existingFolders={existingFolders}
-          showModal={showModal || state.status !== "idle"}
-          prefillProfile={prefillProfile}
-          prefillFolder={prefillFolder}
-          isLoading={isConnecting}
-          error={state.status === "error" ? state.error.message : null}
-          onConnect={(args, profile) => {
-            void handleConnect(args, profile);
-          }}
-          onSaveProfile={save}
-          onCloseModal={closeModal}
-          onOpenModal={() => {
-            openModal(null);
-          }}
-          onDeleteProfile={(id) => {
-            void remove(id);
-          }}
-          onSelectProfile={directConnectProfile}
-          onEditProfile={openModal}
-          onStarProfile={(p) => {
-            void handleStarProfile(p);
-          }}
-          onNewSessionInFolder={openModalForFolder}
-          onImportSshConfig={() => {
-            setShowImport(true);
-          }}
-          sidebarHidden={sidebarHidden}
-          onToggleSidebar={toggleSidebar}
-          onShowLog={() => {
-            setShowSessionLog(true);
-          }}
-        />
-      )}
-    </div>
+    <PageContextProvider>
+      <div className="flex h-full flex-col overflow-hidden">
+        {showSessionLog && (
+          <SessionLogPage
+            onClose={() => {
+              setShowSessionLog(false);
+            }}
+          />
+        )}
+        {showImport && (
+          <SshConfigImportModal
+            existingProfiles={profiles}
+            onImport={(imp) => {
+              void handleImportProfiles(imp);
+            }}
+            onClose={() => {
+              setShowImport(false);
+            }}
+          />
+        )}
+        {connectingProfile && !isConnected && !pwPromptFor && (
+          <ConnectingOverlay
+            profile={connectingProfile}
+            isLoading={isConnecting}
+            error={state.status === "error" ? state.error.message : null}
+            onCancel={() => {
+              void disconnect();
+              setConnectingProfile(null);
+            }}
+            onRetry={() => {
+              directConnectProfile(connectingProfile);
+            }}
+          />
+        )}
+        {pwPromptFor && (
+          <PasswordPrompt
+            profile={pwPromptFor}
+            isLoading={isConnecting}
+            error={state.status === "error" ? state.error.message : null}
+            onSubmit={submitPasswordPrompt}
+            onCancel={() => {
+              setPwPromptFor(null);
+            }}
+          />
+        )}
+        {reconnectStatus.kind === "reconnecting" && (
+          <ReconnectingBanner
+            status="reconnecting"
+            host={reconnectStatus.host}
+            attempt={reconnectStatus.attempt}
+            maxAttempts={reconnectStatus.max}
+          />
+        )}
+        {reconnectStatus.kind === "failed" && (
+          <ReconnectingBanner
+            status="failed"
+            host={reconnectStatus.host}
+            attempt={0}
+            maxAttempts={0}
+            reason={reconnectStatus.reason}
+            onDismiss={() => {
+              setReconnectStatus({ kind: "idle" });
+            }}
+          />
+        )}
+        {isConnected ? (
+          <ConnectedApp
+            result={state.result}
+            profiles={profiles}
+            activeProfile={activeProfile}
+            activeHost={activeHost}
+            existingFolders={existingFolders}
+            prefillProfile={prefillProfile}
+            onDisconnect={() => {
+              void disconnect();
+              openModal(null);
+            }}
+            onConnectionLost={handleConnectionLost}
+            onConnect={(args) => {
+              void connect(args);
+            }}
+            onSaveProfile={save}
+            onDeleteProfile={remove}
+            onSelectProfile={directConnectProfile}
+            onEditProfile={openModal}
+            onStarProfile={(p) => {
+              void handleStarProfile(p);
+            }}
+            onImportSshConfig={() => {
+              setShowImport(true);
+            }}
+            sidebarHidden={sidebarHidden}
+            onToggleSidebar={toggleSidebar}
+            onShowLog={() => {
+              setShowSessionLog(true);
+            }}
+          />
+        ) : (
+          <DisconnectedApp
+            profiles={profiles}
+            activeHost={null}
+            existingFolders={existingFolders}
+            showModal={showModal}
+            prefillProfile={prefillProfile}
+            prefillFolder={prefillFolder}
+            isLoading={isConnecting}
+            error={state.status === "error" ? state.error.message : null}
+            onConnect={(args, profile) => {
+              void handleConnect(args, profile);
+            }}
+            onSaveProfile={save}
+            onCloseModal={closeModal}
+            onOpenModal={() => {
+              openModal(null);
+            }}
+            onDeleteProfile={(id) => {
+              void remove(id);
+            }}
+            onSelectProfile={directConnectProfile}
+            onEditProfile={openModal}
+            onStarProfile={(p) => {
+              void handleStarProfile(p);
+            }}
+            onNewSessionInFolder={openModalForFolder}
+            onImportSshConfig={() => {
+              setShowImport(true);
+            }}
+            sidebarHidden={sidebarHidden}
+            onToggleSidebar={toggleSidebar}
+            onShowLog={() => {
+              setShowSessionLog(true);
+            }}
+          />
+        )}
+      </div>
+    </PageContextProvider>
   );
 }
 
@@ -546,6 +578,56 @@ function ConnectedApp({
   // Phase 4 — Local filesystem
   const localFiles = useLocalFiles();
   const [dualPane, setDualPane] = useState(false);
+
+  // Docker Explorer
+  const [showDocker, setShowDocker] = useState(false);
+  // Preflight modal — shown when user clicks Docker toggle, decides whether Explorer opens
+  const [showDockerPreflight, setShowDockerPreflight] = useState(false);
+
+  // AI Chat panel (global — usable from any page)
+  const [showChat, setShowChat] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("harbor.chatOpen") === "1";
+    } catch {
+      return false;
+    }
+  });
+  function toggleChat(next?: boolean) {
+    setShowChat((v) => {
+      const nv = next ?? !v;
+      try {
+        localStorage.setItem("harbor.chatOpen", nv ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return nv;
+    });
+  }
+
+  // Facebook-Messenger-style minimize: header stays visible, body collapses.
+  const [chatMinimized, setChatMinimizedState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("harbor.chatMinimized") === "1";
+    } catch {
+      return false;
+    }
+  });
+  function setChatMinimized(next: boolean) {
+    setChatMinimizedState(next);
+    try {
+      localStorage.setItem("harbor.chatMinimized", next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Resizable chat width (drag the LEFT edge — invert so drag-left = grow).
+  const [chatWidth, startChatResize] = useResizable(320, "x", {
+    min: 300,
+    max: 640,
+    invert: true,
+    persistKey: "harbor.chatWidth",
+  });
 
   // Phase 5 — Terminal
   // Auto-open on connect so the user sees the shell alongside the file browser.
@@ -783,6 +865,8 @@ function ConnectedApp({
         busy={fileOps.busy}
         dualPane={dualPane}
         showTerminal={showTerminal}
+        showTunnels={showTunnels}
+        showDocker={showDocker}
         canGoBack={activeTab.historyIndex > 0}
         canGoForward={activeTab.historyIndex < activeTab.history.length - 1}
         onGoBack={() => {
@@ -823,7 +907,19 @@ function ConnectedApp({
             return !v;
           });
         }}
-        showTunnels={showTunnels}
+        onToggleDocker={() => {
+          if (showDocker) {
+            // Currently open → close it
+            setShowDocker(false);
+          } else {
+            // Not open → show preflight first
+            setShowDockerPreflight(true);
+          }
+        }}
+        showChat={showChat}
+        onToggleChat={() => {
+          toggleChat();
+        }}
         onShowLog={onShowLog}
       />
 
@@ -1022,6 +1118,37 @@ function ConnectedApp({
         </div>
       </div>
 
+      {/* Global AI Chat sidebar — gated on FEATURES.AI */}
+      {FEATURES.AI && showChat && (
+        <div
+          className="fixed z-[60] flex shadow-modal"
+          style={{
+            right: 0,
+            bottom: 0,
+            top: chatMinimized ? "auto" : 0,
+            width: chatWidth,
+            height: chatMinimized ? 44 : undefined,
+            pointerEvents: "auto",
+          }}
+        >
+          {!chatMinimized && (
+            <ResizeHandle axis="x" onMouseDown={startChatResize} title="Drag to resize chat" />
+          )}
+          <div className="flex min-w-0 flex-1">
+            <ChatPanel
+              host={`${result.username}@${result.host}`}
+              minimized={chatMinimized}
+              onToggleMinimize={() => {
+                setChatMinimized(!chatMinimized);
+              }}
+              onClose={() => {
+                toggleChat(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Status bar */}
       <StatusBar
         host={result.host}
@@ -1146,6 +1273,38 @@ function ConnectedApp({
           }}
         />
       )}
+
+      {showDockerPreflight && (
+        <DockerPreflight
+          onProceed={() => {
+            setShowDockerPreflight(false);
+            setShowDocker(true);
+          }}
+          onCancel={() => {
+            setShowDockerPreflight(false);
+          }}
+        />
+      )}
+
+      {showDocker && (
+        <ErrorBoundary>
+          <DockerExplorerPage
+            host={`${result.username}@${result.host}`}
+            onClose={() => {
+              setShowDocker(false);
+            }}
+            onNodeAutoMessage={
+              FEATURES.AI
+                ? (msg) => {
+                    if (showChat) {
+                      askChat(msg, "auto");
+                    }
+                  }
+                : undefined
+            }
+          />
+        </ErrorBoundary>
+      )}
     </div>
   );
 }
@@ -1162,6 +1321,178 @@ function SidebarPeek({ onShow }: { onShow: () => void }) {
       >
         <ChevronRight size={14} strokeWidth={2.2} />
       </button>
+    </div>
+  );
+}
+
+// ── Connecting overlay (shown when directly clicking a key-auth saved profile) ─
+
+interface ConnectingOverlayProps {
+  profile: ConnectionProfile;
+  isLoading: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onRetry: () => void;
+}
+
+function ConnectingOverlay({
+  profile,
+  isLoading,
+  error,
+  onCancel,
+  onRetry,
+}: ConnectingOverlayProps) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" />
+
+      {/* Card */}
+      <div
+        className="relative w-[340px] overflow-hidden rounded-2xl border border-border bg-surface-pane shadow-2xl"
+        style={{ boxShadow: "0 24px 64px -12px rgba(0,0,0,0.30), 0 0 0 1px rgba(0,0,0,0.06)" }}
+      >
+        {/* Top accent bar */}
+        <div
+          className="h-1 w-full"
+          style={{
+            background: error
+              ? "linear-gradient(90deg, #e5534b, #d64545)"
+              : "linear-gradient(90deg, #3f7be0, #2f6bdb)",
+          }}
+        />
+
+        <div className="px-6 py-5">
+          {!error ? (
+            <>
+              {/* Spinner + title */}
+              <div className="mb-4 flex flex-col items-center gap-3">
+                <div
+                  className="flex h-14 w-14 items-center justify-center rounded-[16px] text-white"
+                  style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
+                >
+                  {/* Animated SSH key / server icon */}
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="2" y="3" width="20" height="14" rx="2" />
+                    <line x1="8" y1="21" x2="16" y2="21" />
+                    <line x1="12" y1="17" x2="12" y2="21" />
+                  </svg>
+                </div>
+                <div className="text-center">
+                  <p className="text-[15px] font-semibold text-text-primary">Connecting…</p>
+                  <p className="mt-0.5 text-[12px] text-text-tertiary">
+                    {profile.name || profile.host}
+                  </p>
+                </div>
+              </div>
+
+              {/* Connection details */}
+              <div className="mb-4 rounded-xl border border-border-subtle bg-surface px-4 py-3">
+                <div className="grid grid-cols-[72px_1fr] gap-y-1.5 text-[11.5px]">
+                  <span className="font-medium text-text-tertiary">Host</span>
+                  <span className="truncate font-mono text-text-primary">
+                    {profile.host}:{String(profile.port)}
+                  </span>
+                  <span className="font-medium text-text-tertiary">User</span>
+                  <span className="font-mono text-text-primary">{profile.username}</span>
+                  <span className="font-medium text-text-tertiary">Auth</span>
+                  <span className="text-text-secondary">
+                    {profile.authType === "publicKey" ? "SSH key" : "Password"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress dots */}
+              <div className="mb-4 flex items-center justify-center gap-1.5">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="h-1.5 w-1.5 rounded-full bg-accent"
+                    style={{
+                      animation: `pulse 1.2s ease-in-out ${String(i * 0.2)}s infinite`,
+                      opacity: 0.4,
+                    }}
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={onCancel}
+                className="w-full rounded-xl border border-border py-2 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Error state */}
+              <div className="mb-4 flex flex-col items-center gap-2">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-danger/10">
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#e5534b"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                </div>
+                <div className="text-center">
+                  <p className="text-[14px] font-semibold text-danger">Connection failed</p>
+                  <p className="mt-0.5 text-[11.5px] text-text-tertiary">
+                    {profile.name || profile.host}
+                  </p>
+                </div>
+              </div>
+
+              {/* Error message */}
+              <div className="mb-4 rounded-xl border border-danger/20 bg-danger/5 px-3 py-2.5">
+                <p className="break-words text-[11.5px] leading-relaxed text-danger">{error}</p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2">
+                <button
+                  onClick={onCancel}
+                  className="flex-1 rounded-xl border border-border py-2 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={onRetry}
+                  disabled={isLoading}
+                  className="flex-1 rounded-xl py-2 text-[12.5px] font-semibold text-white transition-opacity disabled:opacity-60"
+                  style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
+                >
+                  {isLoading ? "Retrying…" : "Retry"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.3); }
+        }
+      `}</style>
     </div>
   );
 }

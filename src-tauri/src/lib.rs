@@ -4,16 +4,21 @@ mod models;
 mod ssh;
 
 use commands::{
-    append_command, cancel_transfer, chmod_file, clear_download_history, close_session,
-    close_terminal, compute_folder_size, connect, connection_status, create_folder, create_session,
-    delete_download, delete_local_path, delete_path, delete_profile, delete_session,
-    delete_sessions_before, disconnect, download_file, download_file_queued, get_file_info,
-    get_local_home, list_downloads, list_folder, list_local_folder, list_port_forwards,
-    list_profiles, list_sessions, load_session, open_terminal, parse_ssh_config, ping,
-    ping_connection, read_file_preview, reconnect, rename_local_path, rename_path, resize_terminal,
-    reveal_in_finder, save_download, save_profile, start_port_forward, stop_all_port_forwards,
-    stop_port_forward, test_connection, upload_file, upload_file_queued, write_file_text,
-    write_terminal,
+    agent_docker_inspect, agent_docker_list_containers, agent_docker_logs, agent_docker_networks,
+    agent_docker_stats, agent_docker_volumes, agent_exec_read, agent_exec_write,
+    agent_list_directory, agent_read_file, append_command, cancel_transfer, chmod_file,
+    clear_download_history, close_session, close_terminal, compute_folder_size, connect,
+    connection_status, create_folder, create_session, delete_download, delete_local_path,
+    delete_path, delete_profile, delete_session, delete_sessions_before, disconnect,
+    docker_all_container_stats, docker_all_mounts, docker_available, docker_container_events,
+    docker_container_inspect, docker_container_logs, docker_container_stats, download_file,
+    download_file_queued, get_file_info, get_local_home, list_compose_projects,
+    list_docker_containers, list_docker_images, list_docker_networks, list_docker_volumes,
+    list_downloads, list_folder, list_local_folder, list_port_forwards, list_profiles,
+    list_sessions, load_session, open_terminal, parse_ssh_config, ping, ping_connection,
+    read_file_preview, reconnect, rename_local_path, rename_path, resize_terminal, reveal_in_finder,
+    save_download, save_profile, start_port_forward, stop_all_port_forwards, stop_port_forward,
+    test_connection, upload_file, upload_file_queued, write_file_text, write_terminal,
 };
 use ssh::SshState;
 
@@ -22,6 +27,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_sql::Builder::new().build())
         .setup(|app| {
             use tauri::Manager;
             let dir = app
@@ -99,6 +105,29 @@ pub fn run() {
             list_downloads,
             delete_download,
             clear_download_history,
+            docker_available,
+            list_docker_containers,
+            list_docker_images,
+            list_docker_networks,
+            list_docker_volumes,
+            list_compose_projects,
+            docker_container_inspect,
+            docker_container_logs,
+            docker_container_stats,
+            docker_container_events,
+            docker_all_container_stats,
+            docker_all_mounts,
+            // Agent tools
+            agent_docker_list_containers,
+            agent_docker_logs,
+            agent_docker_inspect,
+            agent_docker_stats,
+            agent_docker_networks,
+            agent_docker_volumes,
+            agent_read_file,
+            agent_list_directory,
+            agent_exec_read,
+            agent_exec_write,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -13,32 +13,61 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macOS — Apple Silicon (arm64)
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
             target: aarch64-apple-darwin
+            label: macOS-arm64
+
+          # macOS — Intel (x86_64)
           - platform: macos-latest
             args: '--target x86_64-apple-darwin'
             target: x86_64-apple-darwin
+            label: macOS-x86_64
+
+          # macOS — Universal binary (arm64 + x86_64 combined)
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+            target: ''
+            label: macOS-universal
+
+          # Linux — produces AppImage + .deb
           - platform: ubuntu-22.04
             args: ''
             target: ''
+            label: Linux
+
+          # Windows — produces .msi + NSIS installer
           - platform: windows-latest
             args: ''
             target: ''
+            label: Windows
 
     runs-on: ${{ matrix.platform }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install macOS Universal targets
+        if: matrix.label == 'macOS-universal'
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -49,12 +78,14 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libssh-dev
+            libssh-dev \
+            libssl-dev \
+            libgtk-3-dev
 
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and release
+      - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,7 +93,19 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'HarborSCP ${{ github.ref_name }}'
           releaseBody: |
-            See [CHANGELOG.md](https://github.com/AvinashNath2/harbor-ssh-client/blob/main/CHANGELOG.md) for release notes.
+            ## HarborSCP ${{ github.ref_name }}
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | macOS Apple Silicon | `HarborSCP_*_aarch64.dmg` |
+            | macOS Intel | `HarborSCP_*_x64.dmg` |
+            | macOS Universal | `HarborSCP_*_universal.dmg` |
+            | Linux | `harbor-scp_*_amd64.AppImage` · `harbor-scp_*_amd64.deb` |
+            | Windows | `HarborSCP_*_x64-setup.exe` · `HarborSCP_*_x64_en-US.msi` |
+
+            ### What's new
+            See the [CHANGELOG](https://github.com/AvinashNath2/harbor-ssh-client/blob/main/CHANGELOG.md) for full release notes.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

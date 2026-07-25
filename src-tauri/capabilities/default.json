@@ -6,6 +6,19 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "dialog:default"
+    "dialog:default",
+    "sql:default",
+    {
+      "identifier": "sql:allow-load",
+      "allow": [{ "path": "sqlite:harbor-docker-chat.db" }]
+    },
+    {
+      "identifier": "sql:allow-execute",
+      "allow": [{ "path": "sqlite:harbor-docker-chat.db" }]
+    },
+    {
+      "identifier": "sql:allow-select",
+      "allow": [{ "path": "sqlite:harbor-docker-chat.db" }]
+    }
   ]
 }
