@@ -13,6 +13,8 @@ import {
 } from "../api";
 import { OscParser, stripAnsi, type OscEvent } from "../utils/oscParser";
 import type { PendingCommand } from "../hooks/useSessionLog";
+import { onTerminalCommand } from "../lib/terminalBus";
+import { usePageContext } from "../context/PageContext";
 
 interface TerminalTab {
   id: string;
@@ -65,6 +67,19 @@ export function TerminalPanel({
   // Keep ref to tabs so event handlers don't hold stale closures.
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+
+  // Publish terminal context to the global chat panel
+  const pageCtx = usePageContext();
+  useEffect(() => {
+    pageCtx.setCurrentPage("terminal");
+    pageCtx.setTerminalContext({
+      connectedHost: serverLabel,
+      cwd: "",
+      lastCommand: "",
+      lastOutputLines: [],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverLabel]);
 
   // Open one terminal on mount (for the currently connected server).
   useEffect(() => {
@@ -535,6 +550,9 @@ function XTermView({
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const pageCtx = usePageContext();
+  const pageCtxRef = useRef(pageCtx);
+  pageCtxRef.current = pageCtx;
 
   // OSC parser state (persists across chunks within a single terminal lifetime).
   const oscParserRef = useRef(new OscParser());
@@ -579,6 +597,16 @@ function XTermView({
         outputTruncated: p.truncated,
         originalOutputBytes: p.originalBytes,
         source: "terminal",
+      });
+
+      // Publish live context to the chat panel: last command + output snapshot
+      const ctx = pageCtxRef.current;
+      const prev = ctx.terminal;
+      ctx.setTerminalContext({
+        connectedHost: prev?.connectedHost ?? "",
+        cwd: p.cwd || (prev?.cwd ?? ""),
+        lastCommand: p.raw.trim(),
+        lastOutputLines: p.outputLines.slice(-30),
       });
     }
   }
@@ -743,6 +771,18 @@ function XTermView({
       obs.disconnect();
     };
   }, [fit]);
+
+  // Listen for "run in terminal" commands from the AI chat panel.
+  // Only the active tab receives — otherwise every open terminal would run it.
+  useEffect(() => {
+    if (!active) return undefined;
+    const off = onTerminalCommand((cmd) => {
+      const text = cmd.endsWith("\n") ? cmd : cmd + "\n";
+      const bytes = Array.from(new TextEncoder().encode(text));
+      void writeTerminal(terminalId, bytes);
+    });
+    return off;
+  }, [active, terminalId]);
 
   return (
     <div

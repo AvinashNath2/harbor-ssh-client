@@ -497,6 +497,20 @@ export interface ContainerStats {
   block_io: string;
 }
 
+export interface MountEntry {
+  kind: string;
+  name: string;
+  source: string;
+  destination: string;
+  rw: boolean;
+}
+
+export interface ContainerMountInfo {
+  id: string;
+  name: string;
+  mounts: MountEntry[];
+}
+
 export async function dockerAvailable(): Promise<boolean> {
   return invoke<boolean>("docker_available");
 }
@@ -524,23 +538,69 @@ export async function dockerContainerLogs(id: string): Promise<string> {
 export async function dockerContainerStats(id: string): Promise<ContainerStats> {
   return invoke<ContainerStats>("docker_container_stats", { id });
 }
-export async function dockerContainerAction(
-  id: string,
-  action: "start" | "stop" | "restart" | "kill" | "rm",
-): Promise<void> {
-  await invoke("docker_container_action", { id, action });
-}
-export async function dockerImageAction(
-  id: string,
-  action: "pull" | "rmi",
-): Promise<void> {
-  await invoke("docker_image_action", { id, action });
-}
-
 export async function dockerContainerEvents(id: string): Promise<string> {
   return invoke<string>("docker_container_events", { id });
 }
 
 export async function dockerAllContainerStats(): Promise<ContainerStats[]> {
   return invoke<ContainerStats[]>("docker_all_container_stats");
+}
+
+export async function dockerAllMounts(): Promise<ContainerMountInfo[]> {
+  return invoke<ContainerMountInfo[]>("docker_all_mounts");
+}
+
+// ── Agent tools ───────────────────────────────────────────────────────────────
+
+export interface AgentToolResult {
+  ok: boolean;
+  output: string;
+  truncated: boolean;
+  duration_ms: number;
+  error: string | null;
+  suggest_write: boolean;
+}
+
+export async function agentDockerListContainers(): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_docker_list_containers");
+}
+
+export async function agentDockerLogs(
+  name: string,
+  tail?: number,
+  since?: string,
+): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_docker_logs", { name, tail, since });
+}
+
+export async function agentDockerInspect(name: string): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_docker_inspect", { name });
+}
+
+export async function agentDockerStats(): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_docker_stats");
+}
+
+export async function agentDockerNetworks(): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_docker_networks");
+}
+
+export async function agentDockerVolumes(): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_docker_volumes");
+}
+
+export async function agentReadFile(path: string): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_read_file", { path });
+}
+
+export async function agentListDirectory(path: string): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_list_directory", { path });
+}
+
+export async function agentExecRead(cmd: string): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_exec_read", { cmd });
+}
+
+export async function agentExecWrite(cmd: string): Promise<AgentToolResult> {
+  return invoke<AgentToolResult>("agent_exec_write", { cmd });
 }

@@ -1,3 +1,4 @@
+pub mod agent_tools;
 pub mod connect;
 pub mod disconnect;
 pub mod docker;
@@ -36,8 +37,12 @@ pub use ssh_config::parse_ssh_config;
 pub use status::{connection_status, ping_connection};
 pub use terminal::{close_terminal, open_terminal, resize_terminal, write_terminal};
 pub use docker::{
-    docker_all_container_stats, docker_available, docker_container_action,
-    docker_container_events, docker_container_inspect, docker_container_logs,
-    docker_container_stats, docker_image_action, list_compose_projects, list_docker_containers,
-    list_docker_images, list_docker_networks, list_docker_volumes,
+    docker_all_container_stats, docker_all_mounts, docker_available, docker_container_events,
+    docker_container_inspect, docker_container_logs, docker_container_stats, list_compose_projects,
+    list_docker_containers, list_docker_images, list_docker_networks, list_docker_volumes,
+};
+pub use agent_tools::{
+    agent_docker_inspect, agent_docker_list_containers, agent_docker_logs, agent_docker_networks,
+    agent_docker_stats, agent_docker_volumes, agent_exec_read, agent_exec_write,
+    agent_list_directory, agent_read_file,
 };

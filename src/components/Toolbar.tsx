@@ -6,7 +6,9 @@ import {
   FilePlus2,
   FolderPlus,
   History,
+  Lock,
   LogOut,
+  MessageSquare,
   PanelBottom,
   RefreshCw,
   SplitSquareHorizontal,
@@ -15,6 +17,7 @@ import {
   Download as DownloadIcon,
 } from "lucide-react";
 import type { ConnectResult } from "../api";
+import { FEATURES } from "../lib/features";
 
 interface ToolbarProps {
   result: ConnectResult;
@@ -24,6 +27,7 @@ interface ToolbarProps {
   showTerminal: boolean;
   showTunnels: boolean;
   showDocker: boolean;
+  showChat: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
   onGoBack: () => void;
@@ -39,6 +43,7 @@ interface ToolbarProps {
   onToggleTerminal: () => void;
   onToggleTunnels: () => void;
   onToggleDocker: () => void;
+  onToggleChat: () => void;
   onShowLog: () => void;
 }
 
@@ -53,6 +58,7 @@ export function Toolbar({
   showTerminal,
   showTunnels,
   showDocker,
+  showChat,
   canGoBack,
   canGoForward,
   onGoBack,
@@ -68,6 +74,7 @@ export function Toolbar({
   onToggleTerminal,
   onToggleTunnels,
   onToggleDocker,
+  onToggleChat,
   onShowLog,
 }: ToolbarProps) {
   const hasSelection = selected.size > 0;
@@ -181,6 +188,22 @@ export function Toolbar({
         >
           <Box size={ICON_SIZE} strokeWidth={ICON_STROKE} />
         </ToggleBtn>
+        {FEATURES.AI ? (
+          <ToggleBtn
+            title={showChat ? "Hide AI Chat" : "Show AI Chat"}
+            active={showChat}
+            onClick={onToggleChat}
+          >
+            <MessageSquare size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+          </ToggleBtn>
+        ) : (
+          <div className="relative" title="AI Chat — Coming Soon">
+            <div className="flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-input text-text-faint opacity-50">
+              <MessageSquare size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+            </div>
+            <Lock size={8} className="absolute -right-0.5 -top-0.5 text-text-faint" />
+          </div>
+        )}
       </div>
 
       <div className="mx-1 h-4 w-px bg-border" />

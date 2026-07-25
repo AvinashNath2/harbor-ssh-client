@@ -43,62 +43,94 @@ pub struct DockerContainerParsed {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DockerImage {
-    #[serde(rename = "ID")]
+    #[serde(rename(deserialize = "ID"))]
     pub id: String,
-    #[serde(rename = "Repository")]
+    #[serde(rename(deserialize = "Repository"))]
     pub repository: String,
-    #[serde(rename = "Tag")]
+    #[serde(rename(deserialize = "Tag"))]
     pub tag: String,
-    #[serde(rename = "Size")]
+    #[serde(rename(deserialize = "Size"))]
     pub size: String,
-    #[serde(rename = "CreatedAt")]
+    #[serde(rename(deserialize = "CreatedAt"))]
     pub created_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DockerNetwork {
-    #[serde(rename = "ID")]
+    #[serde(rename(deserialize = "ID"))]
     pub id: String,
-    #[serde(rename = "Name")]
+    #[serde(rename(deserialize = "Name"))]
     pub name: String,
-    #[serde(rename = "Driver")]
+    #[serde(rename(deserialize = "Driver"))]
     pub driver: String,
-    #[serde(rename = "Scope")]
+    #[serde(rename(deserialize = "Scope"))]
     pub scope: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DockerVolume {
-    #[serde(rename = "Name")]
+    #[serde(rename(deserialize = "Name"))]
     pub name: String,
-    #[serde(rename = "Driver")]
+    #[serde(rename(deserialize = "Driver"))]
     pub driver: String,
-    #[serde(rename = "Mountpoint")]
+    #[serde(rename(deserialize = "Mountpoint"))]
     pub mountpoint: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ComposeProject {
-    #[serde(rename = "Name", default)]
+    #[serde(rename(deserialize = "Name"), default)]
     pub name: String,
-    #[serde(rename = "Status", default)]
+    #[serde(rename(deserialize = "Status"), default)]
     pub status: Option<String>,
-    #[serde(rename = "ConfigFiles", default)]
+    #[serde(rename(deserialize = "ConfigFiles"), default)]
     pub config_files: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ContainerStats {
-    #[serde(rename = "Name", default)]
+    #[serde(rename(deserialize = "Name"), default)]
     pub name: String,
-    #[serde(rename = "CPUPerc", default)]
+    #[serde(rename(deserialize = "CPUPerc"), default)]
     pub cpu_perc: String,
-    #[serde(rename = "MemUsage", default)]
+    #[serde(rename(deserialize = "MemUsage"), default)]
     pub mem_usage: String,
-    #[serde(rename = "NetIO", default)]
+    #[serde(rename(deserialize = "NetIO"), default)]
     pub net_io: String,
-    #[serde(rename = "BlockIO", default)]
+    #[serde(rename(deserialize = "BlockIO"), default)]
     pub block_io: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MountEntry {
+    #[serde(rename(deserialize = "Type"), alias = "type")]
+    pub kind: String,
+    #[serde(rename(deserialize = "Name"), alias = "name", default)]
+    pub name: String,
+    #[serde(rename(deserialize = "Source"), alias = "source", default)]
+    pub source: String,
+    #[serde(rename(deserialize = "Destination"), alias = "destination", default)]
+    pub destination: String,
+    #[serde(rename(deserialize = "RW"), alias = "rw", default)]
+    pub rw: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContainerMountInfo {
+    pub id: String,
+    pub name: String,
+    pub mounts: Vec<MountEntry>,
+}
+
+// Internal only — not exposed to frontend
+#[derive(Debug, Deserialize)]
+struct InspectRaw {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Mounts", default)]
+    mounts: Vec<MountEntry>,
 }
 
 fn extract_label(labels: &str, key: &str) -> Option<String> {
@@ -322,33 +354,6 @@ pub async fn docker_container_stats(
 }
 
 #[tauri::command]
-pub async fn docker_container_action(
-    state: tauri::State<'_, SshState>,
-    id: String,
-    action: String,
-) -> Result<(), AppError> {
-    let valid_actions = ["start", "stop", "restart", "kill", "rm"];
-    if !valid_actions.contains(&action.as_str()) {
-        return Err(AppError::internal(format!(
-            "Unknown container action: {action}"
-        )));
-    }
-    let ssh = Arc::clone(&state.inner);
-    tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
-            .lock()
-            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
-        let escaped = crate::ssh::shell_single_quote(&id)
-            .ok_or_else(|| AppError::internal("Container ID contains invalid characters"))?;
-        bundle.exec(&format!("docker {action} '{escaped}'"))?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
-}
-
-#[tauri::command]
 pub async fn docker_container_events(
     state: tauri::State<'_, SshState>,
     id: String,
@@ -401,31 +406,34 @@ pub async fn docker_all_container_stats(
 }
 
 #[tauri::command]
-pub async fn docker_image_action(
+pub async fn docker_all_mounts(
     state: tauri::State<'_, SshState>,
-    id: String,
-    action: String,
-) -> Result<(), AppError> {
+) -> Result<Vec<ContainerMountInfo>, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
         let guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
         let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
-        let escaped = crate::ssh::shell_single_quote(&id)
-            .ok_or_else(|| AppError::internal("Image ID contains invalid characters"))?;
-        let cmd = match action.as_str() {
-            "pull" => format!("docker pull '{escaped}'"),
-            "rmi" => format!("docker rmi '{escaped}'"),
-            other => {
-                return Err(AppError::internal(format!(
-                    "Unknown image action: {other}"
-                )))
-            }
-        };
-        bundle.exec(&cmd)?;
-        Ok(())
+        let ids_out = bundle.exec("docker ps -aq 2>/dev/null").unwrap_or_default();
+        let ids: String = ids_out.split_whitespace().collect::<Vec<_>>().join(" ");
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let inspect_out = bundle
+            .exec(&format!("docker inspect {ids} 2>/dev/null"))
+            .unwrap_or_default();
+        let raw: Vec<InspectRaw> = serde_json::from_str(&inspect_out).unwrap_or_default();
+        Ok(raw
+            .into_iter()
+            .map(|r| ContainerMountInfo {
+                id: r.id,
+                name: r.name.trim_start_matches('/').to_string(),
+                mounts: r.mounts,
+            })
+            .collect())
     })
     .await
     .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
 }
+
