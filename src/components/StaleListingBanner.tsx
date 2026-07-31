@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { formatEtaRemaining } from "../utils/formatEta";
 
 interface StaleListingBannerProps {
+  variant?: "cached" | "loading";
   loadedCount?: number;
   totalCount?: number;
   /** Last full load duration from cache (ms) — basis for ETA when total unknown. */
@@ -32,6 +33,7 @@ function computeRemainingMs(
 }
 
 export function StaleListingBanner({
+  variant = "cached",
   loadedCount = 0,
   totalCount,
   estimatedLoadMs,
@@ -61,12 +63,15 @@ export function StaleListingBanner({
 
   const suffix = [progress, eta].filter(Boolean).join(" · ");
 
+  const headline =
+    variant === "cached" ? "Showing cached listing — not latest" : "Loading directory…";
+
   return (
     <div className="flex flex-none items-center gap-2 border-b border-amber-500/25 bg-amber-500/10 px-3.5 py-1.5">
       <Loader2 size={13} strokeWidth={2.2} className="flex-shrink-0 animate-spin text-amber-600" />
       <AlertCircle size={13} strokeWidth={2.2} className="flex-shrink-0 text-amber-600" />
       <span className="text-[11.5px] text-amber-800 dark:text-amber-200">
-        Showing cached listing — not latest
+        {headline}
         <span className="ml-1.5 font-mono text-[10.5px] opacity-80">{suffix}</span>
       </span>
     </div>
