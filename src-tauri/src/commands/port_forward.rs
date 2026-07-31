@@ -138,7 +138,9 @@ fn relay(
     let mut channel = bundle
         .session
         .channel_direct_tcpip(remote_host, remote_port, None)
-        .map_err(|e| AppError::internal(format!("cannot reach {remote_host}:{remote_port}: {e}")))?;
+        .map_err(|e| {
+            AppError::internal(format!("cannot reach {remote_host}:{remote_port}: {e}"))
+        })?;
 
     local
         .set_nonblocking(true)

@@ -81,7 +81,11 @@ pub async fn open_terminal(
                 return;
             }
         };
-        if let Err(e) = channel.request_pty(PTY_TERM_TYPE, None, Some((PTY_INITIAL_COLS, PTY_INITIAL_ROWS, 0, 0))) {
+        if let Err(e) = channel.request_pty(
+            PTY_TERM_TYPE,
+            None,
+            Some((PTY_INITIAL_COLS, PTY_INITIAL_ROWS, 0, 0)),
+        ) {
             let _ = ready_tx.send(Err(AppError::internal(format!("pty: {e}"))));
             return;
         }

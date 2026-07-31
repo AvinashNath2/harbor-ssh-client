@@ -402,13 +402,9 @@ export function useAgentLoop(params: UseAgentLoopParams) {
             }
             seenCalls.set(callKey, seenTimes + 1);
 
-            const effectiveCmd: string | undefined = undefined;
-            const approvalState = "auto";
-
             // Actually invoke the tool.
             const started = Date.now();
-            const liveArgs = effectiveCmd ? { cmd: effectiveCmd } : args;
-            const liveArgsSummary = summariseArgsForLive(liveArgs);
+            const liveArgsSummary = summariseArgsForLive(args);
 
             // Push a "running" live tool row so the UI shows something is happening.
             setLiveToolCalls((prev) => [
@@ -425,7 +421,7 @@ export function useAgentLoop(params: UseAgentLoopParams) {
 
             let result: AgentToolResult;
             try {
-              result = await withTimeout(invokeAgentTool(name, liveArgs), AI_TOOL_TIMEOUT_MS);
+              result = await withTimeout(invokeAgentTool(name, args), AI_TOOL_TIMEOUT_MS);
             } catch (e) {
               result = {
                 ok: false,
@@ -453,20 +449,16 @@ export function useAgentLoop(params: UseAgentLoopParams) {
               ),
             );
 
-            turnToolCalls.push({
-              name,
-              args: effectiveCmd ? { cmd: effectiveCmd } : args,
-              result,
-            });
+            turnToolCalls.push({ name, args, result });
             await params.saveToolCall({
               id: newId("tc-"),
               session_id: session.id,
               message_id: messageId,
               tool_name: name,
-              args_json: JSON.stringify(effectiveCmd ? { cmd: effectiveCmd } : args),
+              args_json: JSON.stringify(args),
               result_json: JSON.stringify(result),
               result_truncated: result.truncated ? 1 : 0,
-              approval_state: approvalState,
+              approval_state: "auto",
               duration_ms: result.duration_ms,
               invoked_at: Date.now(),
             });
