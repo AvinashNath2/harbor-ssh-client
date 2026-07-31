@@ -137,7 +137,7 @@ fn extract_label(labels: &str, key: &str) -> Option<String> {
     labels
         .split(',')
         .find(|kv| kv.trim_start().starts_with(key))
-        .and_then(|kv| kv.splitn(2, '=').nth(1))
+        .and_then(|kv| kv.split_once('=').map(|x| x.1))
         .map(|v| v.to_owned())
 }
 

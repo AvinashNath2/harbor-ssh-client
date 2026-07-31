@@ -1,5 +1,3 @@
-#![allow(dead_code)] // variants and helpers added for Phase 2+
-
 use serde::{Deserialize, Serialize};
 
 // ── Error type ────────────────────────────────────────────────────────────────
@@ -17,6 +15,7 @@ pub enum ErrorCode {
     AuthFailed,
     NotConnected,
     PermissionDenied,
+    #[allow(dead_code)] // reserved for Phase 2+ transfer error reporting
     TransferError,
     Internal,
 }
@@ -63,6 +62,8 @@ impl std::fmt::Display for AppError {
         write!(f, "{}", self.message)
     }
 }
+
+impl std::error::Error for AppError {}
 
 impl From<ssh2::Error> for AppError {
     fn from(e: ssh2::Error) -> Self {

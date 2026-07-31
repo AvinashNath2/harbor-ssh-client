@@ -7,6 +7,10 @@ use std::time::Duration;
 
 use ssh2::Session;
 
+use crate::config::{
+    SFTP_PREVIEW_CAP_BYTES, SFTP_TRANSFER_BUF_SIZE, SSH_CONNECT_TIMEOUT_SECS,
+    SSH_KEEPALIVE_INTERVAL_SECS, SSH_READ_TIMEOUT_SECS,
+};
 use crate::models::{
     format_permissions, AppError, AuthMethod, ConnectResult, FileEntry, FileKind, StoredCreds,
 };
@@ -61,7 +65,7 @@ impl SessionBundle {
                 .map_err(|e| AppError::connection_failed(format!("DNS lookup failed: {e}")))?
                 .next()
                 .ok_or_else(|| AppError::connection_failed("No addresses returned by DNS"))?;
-            TcpStream::connect_timeout(&socket, Duration::from_secs(10))
+            TcpStream::connect_timeout(&socket, Duration::from_secs(SSH_CONNECT_TIMEOUT_SECS))
                 .map_err(|e| AppError::connection_failed(format!("TCP connect failed: {e}")))
         })?;
 
@@ -71,7 +75,7 @@ impl SessionBundle {
             .unwrap_or_else(|_| host.to_owned());
 
         stream
-            .set_read_timeout(Some(Duration::from_secs(30)))
+            .set_read_timeout(Some(Duration::from_secs(SSH_READ_TIMEOUT_SECS)))
             .map_err(|e| AppError::internal(e.to_string()))?;
 
         let mut session =
@@ -114,7 +118,7 @@ impl SessionBundle {
         // subsequent read/write on this session will error out instead of
         // hanging indefinitely. The `true` argument makes the server also
         // send replies, so we can detect one-way drops.
-        session.set_keepalive(true, 30);
+        session.set_keepalive(true, SSH_KEEPALIVE_INTERVAL_SECS);
 
         Ok(SessionBundle {
             session,
@@ -135,7 +139,7 @@ impl SessionBundle {
                     .map_err(|e| AppError::internal(format!("SFTP subsystem failed: {e}")))?,
             );
         }
-        Ok(self.sftp.as_ref().unwrap())
+        Ok(self.sftp.as_ref().expect("sftp was just initialised above"))
     }
 
     /// Cheap existence check via SFTP stat — used by path-bar validation instead
@@ -380,7 +384,7 @@ impl SessionBundle {
         let mut dst = std::fs::File::create(local_path)
             .map_err(|e| AppError::internal(format!("Cannot create file: {e}")))?;
 
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8; SFTP_TRANSFER_BUF_SIZE];
         let mut transferred = 0u64;
 
         loop {
@@ -427,7 +431,7 @@ impl SessionBundle {
             .create(Path::new(remote_path))
             .map_err(AppError::from)?;
 
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8; SFTP_TRANSFER_BUF_SIZE];
         let mut transferred = 0u64;
 
         loop {
@@ -563,7 +567,7 @@ impl SessionBundle {
     pub fn read_file_preview(&mut self, path: &str, max_bytes: usize) -> Result<String, AppError> {
         let sftp = self.get_sftp()?;
         let mut file = sftp.open(Path::new(path)).map_err(AppError::from)?;
-        let cap = max_bytes.min(131_072);
+        let cap = max_bytes.min(SFTP_PREVIEW_CAP_BYTES);
         let mut buf = vec![0u8; cap];
         let n = Read::read(&mut file, &mut buf)
             .map_err(|e| AppError::internal(format!("Read failed: {e}")))?;

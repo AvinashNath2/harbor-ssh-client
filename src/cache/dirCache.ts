@@ -1,8 +1,7 @@
+import { CACHE_MAX_DIRS, CACHE_MAX_ENTRIES } from "../config";
+
 /** Cache directories only when they contain more than this many entries. */
 export const CACHE_MIN_ENTRIES = 21;
-
-const MAX_CACHED_DIRS = 20;
-const MAX_TOTAL_ENTRIES = 200_000;
 
 interface CachedDir<T> {
   entries: T[];
@@ -69,7 +68,7 @@ class DirCacheStore {
 
   private evictIfNeeded(incoming: number): void {
     while (
-      (this.store.size >= MAX_CACHED_DIRS || this.totalEntries + incoming > MAX_TOTAL_ENTRIES) &&
+      (this.store.size >= CACHE_MAX_DIRS || this.totalEntries + incoming > CACHE_MAX_ENTRIES) &&
       this.store.size > 0
     ) {
       let oldestKey: string | null = null;

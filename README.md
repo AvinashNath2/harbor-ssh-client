@@ -2,7 +2,7 @@
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/AvinashNath2/harbor-ssh-client?color=brightgreen)](https://github.com/AvinashNath2/harbor-ssh-client/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/AvinashNath2/harbor-ssh-client/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](https://github.com/AvinashNath2/harbor-ssh-client/releases/latest)
 
 > Connect to any server, browse files, run commands, and inspect Docker infrastructure — all from one native desktop app.
 
@@ -17,8 +17,7 @@
 | [![macOS Apple Silicon](https://img.shields.io/badge/macOS_Apple_Silicon-Download-000000?logo=apple&logoColor=white&style=for-the-badge)](https://github.com/AvinashNath2/harbor-ssh-client/releases/latest) | `HarborSCP_*_aarch64.dmg` |
 | [![macOS Intel](https://img.shields.io/badge/macOS_Intel-Download-000000?logo=apple&logoColor=white&style=for-the-badge)](https://github.com/AvinashNath2/harbor-ssh-client/releases/latest) | `HarborSCP_*_x64.dmg` |
 | [![macOS Universal](https://img.shields.io/badge/macOS_Universal-Download-000000?logo=apple&logoColor=white&style=for-the-badge)](https://github.com/AvinashNath2/harbor-ssh-client/releases/latest) | `HarborSCP_*_universal.dmg` |
-| [![Windows](https://img.shields.io/badge/Windows-Download-0078D4?logo=windows&logoColor=white&style=for-the-badge)](https://github.com/AvinashNath2/harbor-ssh-client/releases/latest) | `HarborSCP_*_x64-setup.exe` or `.msi` |
-| [![Linux](https://img.shields.io/badge/Linux-Download-E95420?logo=linux&logoColor=white&style=for-the-badge)](https://github.com/AvinashNath2/harbor-ssh-client/releases/latest) | `harbor-scp_*_amd64.AppImage` or `.deb` |
+| [![Windows](https://img.shields.io/badge/Windows-Download-0078D4?logo=windows&logoColor=white&style=for-the-badge)](https://github.com/AvinashNath2/harbor-ssh-client/releases/latest) | `HarborSCP_*_x64-setup.exe` or `.msi` · or portable `HarborSCP_*_x64_portable.zip` |
 
 [Build from source →](CONTRIBUTING.md)
 

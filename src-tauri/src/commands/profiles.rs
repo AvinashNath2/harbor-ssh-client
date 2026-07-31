@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::Manager;
 
@@ -13,7 +13,7 @@ fn profiles_path(app: &tauri::AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("connections.json"))
 }
 
-fn read_all(path: &PathBuf) -> Result<Vec<ConnectionProfile>, AppError> {
+fn read_all(path: &Path) -> Result<Vec<ConnectionProfile>, AppError> {
     if !path.exists() {
         return Ok(vec![]);
     }
@@ -21,7 +21,7 @@ fn read_all(path: &PathBuf) -> Result<Vec<ConnectionProfile>, AppError> {
     serde_json::from_str(&json).map_err(|e| AppError::internal(e.to_string()))
 }
 
-fn write_all(path: &PathBuf, profiles: &[ConnectionProfile]) -> Result<(), AppError> {
+fn write_all(path: &Path, profiles: &[ConnectionProfile]) -> Result<(), AppError> {
     let json =
         serde_json::to_string_pretty(profiles).map_err(|e| AppError::internal(e.to_string()))?;
     std::fs::write(path, json).map_err(|e| AppError::internal(e.to_string()))

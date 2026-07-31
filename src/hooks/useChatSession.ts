@@ -2,6 +2,7 @@ import Database from "@tauri-apps/plugin-sql";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PageContextValue } from "../context/PageContext";
 import { buildSystemPrompt } from "../context/pagePrompt";
+import { OLLAMA_BASE_URL, AI_ROLLING_WINDOW } from "../config";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -203,8 +204,6 @@ export function extractCodeBlocks(
   return out;
 }
 
-const ROLLING_WINDOW = 10;
-const OLLAMA_BASE = "http://localhost:11434";
 
 interface OllamaChatChunk {
   model?: string;
@@ -563,7 +562,7 @@ export function useChatSession({
 
       // Build message history for Ollama
       const priorAll = [...messages, userMsg];
-      const priorPruned = priorAll.slice(-ROLLING_WINDOW);
+      const priorPruned = priorAll.slice(-AI_ROLLING_WINDOW);
       const systemPrompt = buildSystemPrompt(ctx);
       const ollamaMessages = [
         { role: "system", content: systemPrompt },
@@ -586,7 +585,7 @@ export function useChatSession({
       let hadError: string | null = null;
 
       try {
-        const res = await fetch(`${OLLAMA_BASE}/api/chat`, {
+        const res = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

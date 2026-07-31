@@ -45,15 +45,10 @@ pub struct SessionWithCommands {
 
 fn new_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
+    let dur = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
-    let epoch = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    format!("{:x}{:x}", epoch, nanos)
+        .unwrap_or_default();
+    format!("{:x}{:x}", dur.as_millis(), dur.subsec_nanos())
 }
 
 fn now_ms() -> i64 {

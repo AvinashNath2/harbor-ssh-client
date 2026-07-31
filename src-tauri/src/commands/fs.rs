@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use tauri::Emitter;
 
+use crate::config::SFTP_LIST_CHUNK_SIZE;
 use crate::models::{
     AppError, FileEntry, FileInfo, FolderListChunk, FolderListDone, FolderListError,
     TransferProgress,
@@ -35,8 +36,6 @@ pub async fn list_folder(
 ) -> Result<Vec<FileEntry>, AppError> {
     sftp_op!(state, |bundle| bundle.list_dir(&path))
 }
-
-const LIST_CHUNK_SIZE: usize = 500;
 
 #[tauri::command]
 pub async fn list_folder_stream(
@@ -79,7 +78,7 @@ pub async fn list_folder_stream(
 
             let total = bundle.list_dir_stream(
                 &path2,
-                LIST_CHUNK_SIZE,
+                SFTP_LIST_CHUNK_SIZE,
                 &mut is_cancelled,
                 |entries, offset| {
                     let _ = app2.emit(

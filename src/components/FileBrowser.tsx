@@ -24,18 +24,19 @@ import { fileIcon, fileTypeLabel } from "../utils/fileType";
 import { normalizeRemotePath, remotePathParent, splitRemotePath } from "../utils/remotePath";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { StaleListingBanner } from "./StaleListingBanner";
+import {
+  BROWSER_COMPACT_THRESHOLD,
+  BROWSER_ROW_HEIGHT,
+  BROWSER_ROW_HEIGHT_COMPACT,
+  BROWSER_GRID_COMPACT,
+  MIME_HARBOR_LOCAL,
+  MIME_HARBOR_REMOTE,
+} from "../config";
 
 type SortColumn = "name" | "size" | "modified" | "type";
 type SortDir = "asc" | "desc";
 
-const COMPACT_THRESHOLD = 560;
 const GRID_WIDE = "16px minmax(0,1fr) 110px 78px 118px 100px";
-const GRID_COMPACT = "16px minmax(0,1fr) 70px 110px";
-const ROW_HEIGHT = 33;
-const ROW_HEIGHT_COMPACT = 32;
-
-const HARBOR_LOCAL_MIME = "application/x-harbor-local";
-const HARBOR_REMOTE_MIME = "application/x-harbor-remote";
 
 interface FileBrowserProps {
   tab: Tab;
@@ -79,8 +80,8 @@ export function FileBrowser({
   onShowPreview,
 }: FileBrowserProps) {
   const [containerRef, containerWidth] = useElementWidth();
-  const compact = containerWidth > 0 && containerWidth < COMPACT_THRESHOLD;
-  const gridCols = compact ? GRID_COMPACT : GRID_WIDE;
+  const compact = containerWidth > 0 && containerWidth < BROWSER_COMPACT_THRESHOLD;
+  const gridCols = compact ? BROWSER_GRID_COMPACT : GRID_WIDE;
 
   const [pathInput, setPathInput] = useState("");
   const [editingPath, setEditingPath] = useState(false);
@@ -427,7 +428,7 @@ export function FileBrowser({
   // Drag-and-drop: accept local paths dropped here → upload to current dir.
   const [isDropTarget, setIsDropTarget] = useState(false);
   function handleDragOver(e: React.DragEvent) {
-    const hasLocal = e.dataTransfer.types.includes(HARBOR_LOCAL_MIME);
+    const hasLocal = e.dataTransfer.types.includes(MIME_HARBOR_LOCAL);
     const hasOsFiles = e.dataTransfer.types.includes("Files");
     if (hasLocal || hasOsFiles) {
       e.preventDefault();
@@ -440,7 +441,7 @@ export function FileBrowser({
   }
   function handleDrop(e: React.DragEvent) {
     setIsDropTarget(false);
-    const raw = e.dataTransfer.getData(HARBOR_LOCAL_MIME);
+    const raw = e.dataTransfer.getData(MIME_HARBOR_LOCAL);
     if (raw) {
       e.preventDefault();
       try {
@@ -739,7 +740,7 @@ export function FileBrowser({
               <FileList
                 scrollRef={scrollRef}
                 entries={visibleEntries}
-                rowHeight={compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT}
+                rowHeight={compact ? BROWSER_ROW_HEIGHT_COMPACT : BROWSER_ROW_HEIGHT}
                 selected={selected}
                 renamingPath={renamingPath}
                 compact={compact}
@@ -991,7 +992,7 @@ function FileList({
               onRenameCommit={onRenameCommit}
               onDragStart={(e) => {
                 const paths = selected.has(entry.path) ? Array.from(selected) : [entry.path];
-                e.dataTransfer.setData(HARBOR_REMOTE_MIME, JSON.stringify(paths));
+                e.dataTransfer.setData(MIME_HARBOR_REMOTE, JSON.stringify(paths));
                 e.dataTransfer.effectAllowed = "copy";
               }}
             />

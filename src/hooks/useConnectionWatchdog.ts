@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
 import { pingConnection } from "../api";
-
-const IDLE_PING_INTERVAL_MS = 30_000; // background heartbeat when idle
-const FOCUS_DEBOUNCE_MS = 200; // avoid flooding on rapid tab switches
+import { WATCHDOG_PING_INTERVAL_MS, WATCHDOG_FOCUS_DEBOUNCE_MS } from "../config";
 
 /**
  * Proactively detects when the SSH session has dropped underneath the UI
@@ -41,7 +39,7 @@ export function useConnectionWatchdog(enabled: boolean, onDrop: () => void) {
 
     function pingIfDueToFocus() {
       const now = Date.now();
-      if (now - lastFocusPingAt < FOCUS_DEBOUNCE_MS) return;
+      if (now - lastFocusPingAt < WATCHDOG_FOCUS_DEBOUNCE_MS) return;
       lastFocusPingAt = now;
       void ping();
     }
@@ -57,7 +55,7 @@ export function useConnectionWatchdog(enabled: boolean, onDrop: () => void) {
     document.addEventListener("visibilitychange", onVisibility);
     const interval = window.setInterval(() => {
       void ping();
-    }, IDLE_PING_INTERVAL_MS);
+    }, WATCHDOG_PING_INTERVAL_MS);
 
     return () => {
       cancelled = true;

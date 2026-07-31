@@ -28,14 +28,16 @@ import { fileIcon, fileTypeLabel } from "../utils/fileType";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { StaleListingBanner } from "./StaleListingBanner";
+import {
+  BROWSER_COMPACT_THRESHOLD,
+  BROWSER_ROW_HEIGHT,
+  BROWSER_ROW_HEIGHT_COMPACT,
+  BROWSER_GRID_COMPACT,
+  MIME_HARBOR_LOCAL,
+  MIME_HARBOR_REMOTE,
+} from "../config";
 
-const HARBOR_LOCAL_MIME = "application/x-harbor-local";
-const HARBOR_REMOTE_MIME = "application/x-harbor-remote";
-const COMPACT_THRESHOLD = 500;
 const GRID_WIDE = "16px minmax(0,1fr) 110px 78px 118px";
-const GRID_COMPACT = "16px minmax(0,1fr) 70px 110px";
-const ROW_HEIGHT = 31;
-const ROW_HEIGHT_COMPACT = 31;
 
 type SortCol = "name" | "size" | "modified" | "type";
 type SortDir = "asc" | "desc";
@@ -77,8 +79,8 @@ export function LocalBrowser({
   homeDir,
 }: LocalBrowserProps) {
   const [containerRef, containerWidth] = useElementWidth();
-  const compact = containerWidth > 0 && containerWidth < COMPACT_THRESHOLD;
-  const gridCols = compact ? GRID_COMPACT : GRID_WIDE;
+  const compact = containerWidth > 0 && containerWidth < BROWSER_COMPACT_THRESHOLD;
+  const gridCols = compact ? BROWSER_GRID_COMPACT : GRID_WIDE;
 
   const [editingPath, setEditingPath] = useState(false);
   const [pathInput, setPathInput] = useState("");
@@ -219,7 +221,7 @@ export function LocalBrowser({
 
   const { visibleEntries } = useSortedEntries(tab.entries, search, sortCol, sortDir);
 
-  const rowHeight = compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT;
+  const rowHeight = compact ? BROWSER_ROW_HEIGHT_COMPACT : BROWSER_ROW_HEIGHT;
   const virtualizer = useVirtualizer({
     count: visibleEntries.length,
     getScrollElement: () => scrollRef.current,
@@ -353,7 +355,7 @@ export function LocalBrowser({
   // Drag-and-drop.
   const [isDropTarget, setIsDropTarget] = useState(false);
   function handleDragOver(e: React.DragEvent) {
-    if (e.dataTransfer.types.includes(HARBOR_REMOTE_MIME)) {
+    if (e.dataTransfer.types.includes(MIME_HARBOR_REMOTE)) {
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
       setIsDropTarget(true);
@@ -364,7 +366,7 @@ export function LocalBrowser({
   }
   function handleDrop(e: React.DragEvent) {
     setIsDropTarget(false);
-    const raw = e.dataTransfer.getData(HARBOR_REMOTE_MIME);
+    const raw = e.dataTransfer.getData(MIME_HARBOR_REMOTE);
     if (!raw) return;
     e.preventDefault();
     try {
@@ -686,7 +688,7 @@ export function LocalBrowser({
                           const paths = selected.has(entry.path)
                             ? Array.from(selected)
                             : [entry.path];
-                          e.dataTransfer.setData(HARBOR_LOCAL_MIME, JSON.stringify(paths));
+                          e.dataTransfer.setData(MIME_HARBOR_LOCAL, JSON.stringify(paths));
                           e.dataTransfer.effectAllowed = "copy";
                         }}
                       />

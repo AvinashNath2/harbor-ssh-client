@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SortColumn, SortDir } from "../workers/sortEntries.worker";
+import { SORT_WORKER_THRESHOLD } from "../config";
 
 interface SortableEntry {
   name: string;
@@ -8,8 +9,6 @@ interface SortableEntry {
   size: number | null;
   modified: number | null;
 }
-
-const WORKER_THRESHOLD = 200;
 
 let sharedWorker: Worker | null = null;
 let nextSortId = 0;
@@ -30,7 +29,7 @@ export function useSortedEntries<T extends SortableEntry>(
 ) {
   const q = search.trim().toLowerCase();
   const isDefaultSort = sortCol === "name" && sortDir === "asc" && !q;
-  const useWorker = !isDefaultSort || entries.length > WORKER_THRESHOLD;
+  const useWorker = !isDefaultSort || entries.length > SORT_WORKER_THRESHOLD;
 
   const [sortedIndices, setSortedIndices] = useState<number[]>(() => entries.map((_, i) => i));
   const [isSorting, setIsSorting] = useState(false);

@@ -23,6 +23,7 @@ import type { PendingCommand } from "../hooks/useSessionLog";
 import { onTerminalCommand } from "../lib/terminalBus";
 import { usePageContext } from "../context/PageContext";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { TERMINAL_DEFAULT_MAX_LINES, TERMINAL_DEFAULT_MAX_BYTES } from "../config";
 
 interface TerminalTab {
   id: string;
@@ -36,20 +37,18 @@ interface TerminalTab {
   password?: string;
 }
 
-// Output capture limits (read from localStorage, defaulting to sensible values).
-const DEFAULT_MAX_LINES = 500;
-const DEFAULT_MAX_BYTES = 100 * 1024; // 100 KB
-
 function getOutputLimits(): { maxLines: number; maxBytes: number } {
   try {
     return {
       maxLines:
-        parseInt(localStorage.getItem("harbor.log.maxLines") ?? "", 10) || DEFAULT_MAX_LINES,
+        parseInt(localStorage.getItem("harbor.log.maxLines") ?? "", 10) ||
+        TERMINAL_DEFAULT_MAX_LINES,
       maxBytes:
-        parseInt(localStorage.getItem("harbor.log.maxBytes") ?? "", 10) || DEFAULT_MAX_BYTES,
+        parseInt(localStorage.getItem("harbor.log.maxBytes") ?? "", 10) ||
+        TERMINAL_DEFAULT_MAX_BYTES,
     };
   } catch {
-    return { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES };
+    return { maxLines: TERMINAL_DEFAULT_MAX_LINES, maxBytes: TERMINAL_DEFAULT_MAX_BYTES };
   }
 }
 

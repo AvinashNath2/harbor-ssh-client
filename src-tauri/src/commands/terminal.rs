@@ -3,6 +3,10 @@ use std::sync::Arc;
 
 use tauri::Emitter;
 
+use crate::config::{
+    PTY_INITIAL_COLS, PTY_INITIAL_ROWS, PTY_READ_BUF_SIZE, PTY_TERM_TYPE,
+    TERMINAL_IDLE_MAX_BACKOFF_MS, TERMINAL_STARTUP_DELAY_MS,
+};
 use crate::models::{AppError, AuthMethod, StoredCreds};
 use crate::ssh::{SshState, TerminalCmd};
 
@@ -77,7 +81,7 @@ pub async fn open_terminal(
                 return;
             }
         };
-        if let Err(e) = channel.request_pty("xterm-256color", None, Some((120, 40, 0, 0))) {
+        if let Err(e) = channel.request_pty(PTY_TERM_TYPE, None, Some((PTY_INITIAL_COLS, PTY_INITIAL_ROWS, 0, 0))) {
             let _ = ready_tx.send(Err(AppError::internal(format!("pty: {e}"))));
             return;
         }
@@ -106,7 +110,7 @@ pub async fn open_terminal(
         // `terminal-data` listener before we start emitting. Without this,
         // the shell's initial MOTD / PS1 output would be dropped because no
         // one is listening yet.
-        std::thread::sleep(std::time::Duration::from_millis(400));
+        std::thread::sleep(std::time::Duration::from_millis(TERMINAL_STARTUP_DELAY_MS));
 
         // Harbor shell integration — fire-and-forget. Never use `stty -echo`
         // here: if echo is not restored the user cannot see keystrokes. Setup
@@ -123,7 +127,7 @@ pub async fn open_terminal(
         bundle.session.set_blocking(false);
 
         // ── Read/write loop ────────────────────────────────────────────────────
-        let mut read_buf = [0u8; 4096];
+        let mut read_buf = [0u8; PTY_READ_BUF_SIZE];
         let mut idle_backoff_ms = 1u64;
         loop {
             let mut did_work = false;
@@ -191,7 +195,7 @@ pub async fn open_terminal(
 
             if !did_work {
                 std::thread::sleep(std::time::Duration::from_millis(idle_backoff_ms));
-                idle_backoff_ms = (idle_backoff_ms * 2).min(16);
+                idle_backoff_ms = (idle_backoff_ms * 2).min(TERMINAL_IDLE_MAX_BACKOFF_MS);
             }
         }
 
