@@ -302,7 +302,7 @@ export interface SessionRecord {
   profileName: string | null;
 }
 
-export type CommandSource = "terminal" | "file_browser";
+export type CommandSource = "terminal" | "file_browser" | "cleanup";
 
 export interface CommandRecord {
   id: string;
@@ -603,4 +603,127 @@ export async function agentExecRead(cmd: string): Promise<AgentToolResult> {
 
 export async function agentExecWrite(cmd: string): Promise<AgentToolResult> {
   return invoke<AgentToolResult>("agent_exec_write", { cmd });
+}
+
+// ── Storage Analyzer ──────────────────────────────────────────────────────────
+
+export interface DiskMount {
+  fs: string;
+  mount: string;
+  total: number;
+  used: number;
+  avail: number;
+  use_pct: number;
+}
+
+export interface StorageSystemInfo {
+  uptime: string;
+  kernel: string;
+  os_name: string;
+  os_version: string;
+  hostname: string;
+}
+
+export interface FolderSize {
+  path: string;
+  size_bytes: number;
+}
+
+export interface AgeHistogram {
+  last_24h_bytes: number;
+  last_7d_bytes: number;
+  last_30d_bytes: number;
+  last_90d_bytes: number;
+  older_bytes: number;
+  total_files: number;
+}
+
+export async function storageOverview(): Promise<DiskMount[]> {
+  return invoke<DiskMount[]>("storage_overview");
+}
+
+export async function storageSystemInfo(): Promise<StorageSystemInfo> {
+  return invoke<StorageSystemInfo>("storage_system_info");
+}
+
+export async function storageScanRoot(depth?: number): Promise<FolderSize[]> {
+  return invoke<FolderSize[]>("storage_scan_root", { depth });
+}
+
+export async function storageAgeHistogram(path: string): Promise<AgeHistogram> {
+  return invoke<AgeHistogram>("storage_age_histogram", { path });
+}
+
+export async function storageScanPath(path: string, depth?: number): Promise<FolderSize[]> {
+  return invoke<FolderSize[]>("storage_scan_path", { path, depth });
+}
+
+export interface LargestFile {
+  path: string;
+  size_bytes: number;
+  modified: number | null;
+}
+
+export async function storageLargestItems(
+  root: string,
+  kind: "files" | "folders",
+  limit?: number,
+): Promise<LargestFile[]> {
+  return invoke<LargestFile[]>("storage_largest_items", { root, kind, limit });
+}
+
+export async function storageCategorySizes(): Promise<FolderSize[]> {
+  return invoke<FolderSize[]>("storage_category_sizes");
+}
+
+export interface CleanupEstimate {
+  target: string;
+  estimated_bytes: number;
+  command_preview: string;
+  sudo_required: boolean;
+  available: boolean;
+}
+
+export interface CleanupResult {
+  bytes_freed: number;
+  duration_ms: number;
+  exit_code: number;
+  stderr: string;
+  command_run: string;
+  sudo_used: boolean;
+}
+
+export interface DuplicateFile {
+  path: string;
+  size_bytes: number;
+  modified: number | null;
+}
+
+export interface DuplicateGroup {
+  hash: string;
+  size_bytes: number;
+  files: DuplicateFile[];
+}
+
+export async function storageCheckSudo(): Promise<boolean> {
+  return invoke<boolean>("storage_check_sudo");
+}
+
+export async function storageCleanupEstimate(target: string): Promise<CleanupEstimate> {
+  return invoke<CleanupEstimate>("storage_cleanup_estimate", { target });
+}
+
+export async function storageCleanupExecute(
+  target: string,
+  sudoPassword?: string,
+): Promise<CleanupResult> {
+  return invoke<CleanupResult>("storage_cleanup_execute", { target, sudoPassword });
+}
+
+export async function storageFindDuplicates(
+  root: string,
+  minSizeBytes: number,
+  maxDepth: number,
+): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("storage_find_duplicates", { root, minSizeBytes, maxDepth });
 }

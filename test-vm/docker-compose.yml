@@ -1,0 +1,18 @@
+services:
+  test-vm:
+    build: .
+    container_name: harborscp-test-vm
+    hostname: test-ubuntu
+    ports:
+      - "2222:2222"
+    environment:
+      # linuxserver/openssh-server env vars
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - USER_NAME=harbor
+      - USER_PASSWORD=harbor123
+      - PASSWORD_ACCESS=true
+      - SUDO_ACCESS=true
+      - LOG_STDOUT=true
+    restart: unless-stopped

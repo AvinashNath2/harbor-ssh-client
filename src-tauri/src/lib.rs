@@ -16,9 +16,13 @@ use commands::{
     list_docker_containers, list_docker_images, list_docker_networks, list_docker_volumes,
     list_downloads, list_folder, list_local_folder, list_port_forwards, list_profiles,
     list_sessions, load_session, open_terminal, parse_ssh_config, ping, ping_connection,
-    read_file_preview, reconnect, rename_local_path, rename_path, resize_terminal, reveal_in_finder,
-    save_download, save_profile, start_port_forward, stop_all_port_forwards, stop_port_forward,
-    test_connection, upload_file, upload_file_queued, write_file_text, write_terminal,
+    read_file_preview, reconnect, rename_local_path, rename_path, resize_terminal,
+    reveal_in_finder, save_download, save_profile, start_port_forward, stop_all_port_forwards,
+    stop_port_forward, storage_age_histogram, storage_category_sizes, storage_check_sudo,
+    storage_cleanup_estimate, storage_cleanup_execute, storage_find_duplicates,
+    storage_largest_items, storage_overview, storage_scan_path, storage_scan_root,
+    storage_system_info, test_connection, upload_file, upload_file_queued, write_file_text,
+    write_terminal,
 };
 use ssh::SshState;
 
@@ -128,6 +132,18 @@ pub fn run() {
             agent_list_directory,
             agent_exec_read,
             agent_exec_write,
+            // Storage Analyzer
+            storage_overview,
+            storage_system_info,
+            storage_scan_root,
+            storage_age_histogram,
+            storage_scan_path,
+            storage_largest_items,
+            storage_category_sizes,
+            storage_check_sudo,
+            storage_cleanup_estimate,
+            storage_cleanup_execute,
+            storage_find_duplicates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,6 @@
 [package]
 name = "harborscp"
-version = "1.0.1"
+version = "1.1.0"
 description = "A native SSH/SFTP desktop client for developers — built with Tauri + Rust"
 authors = ["Avinash Nath <avinashnath2@gmail.com>"]
 license = "MIT"

@@ -12,6 +12,7 @@ import {
 } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import { DockerExplorerPage } from "./components/DockerExplorerPage";
+import { StorageAnalyzerPage } from "./components/StorageAnalyzerPage";
 import { DockerPreflight } from "./components/DockerPreflight";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PageContextProvider } from "./context/PageContext";
@@ -584,6 +585,9 @@ function ConnectedApp({
   // Preflight modal — shown when user clicks Docker toggle, decides whether Explorer opens
   const [showDockerPreflight, setShowDockerPreflight] = useState(false);
 
+  // Storage Analyzer (Data Profiler)
+  const [showStorageAnalyzer, setShowStorageAnalyzer] = useState(false);
+
   // AI Chat panel (global — usable from any page)
   const [showChat, setShowChat] = useState<boolean>(() => {
     try {
@@ -1110,6 +1114,9 @@ function ConnectedApp({
                       setShowTerminal(false);
                     }}
                     onCommandLogged={logCommand}
+                    onOpenDataProfiler={() => {
+                      setShowStorageAnalyzer(true);
+                    }}
                   />
                 </div>
               )}
@@ -1302,6 +1309,23 @@ function ConnectedApp({
                   }
                 : undefined
             }
+          />
+        </ErrorBoundary>
+      )}
+
+      {showStorageAnalyzer && (
+        <ErrorBoundary>
+          <StorageAnalyzerPage
+            host={result.host}
+            username={result.username}
+            osInfo={result.osInfo}
+            onClose={() => {
+              setShowStorageAnalyzer(false);
+            }}
+            onBrowse={(path) => {
+              setShowStorageAnalyzer(false);
+              navigateTo(activeId, path);
+            }}
           />
         </ErrorBoundary>
       )}

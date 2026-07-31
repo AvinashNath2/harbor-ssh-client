@@ -1,0 +1,786 @@
+use std::cmp::Reverse;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
+
+use crate::models::AppError;
+use crate::ssh::SshState;
+
+/// Wrap a shell command so it runs at the lowest CPU and I/O priority and is
+/// killed by the remote OS if it exceeds `timeout_secs` seconds.
+///
+/// - `nice -n 19`: lowest CPU scheduling class — scans yield to every other process.
+/// - `timeout <N>`: guarantees the remote `find`/`du` process is killed even if the
+///   SSH channel closes unexpectedly, preventing orphaned heavy processes on prod.
+/// - Running inside `sh -c` lets the pipe (`find … | head`) be managed by a single
+///   shell process group, so SIGTERM from `timeout` propagates to all children.
+///
+/// Single quotes inside `cmd` are automatically escaped.
+fn throttle(cmd: &str, timeout_secs: u32) -> String {
+    let escaped = cmd.replace('\'', "'\\''");
+    format!("timeout {timeout_secs} nice -n 19 sh -c '{escaped}'")
+}
+
+#[derive(Debug, Serialize)]
+pub struct DiskMount {
+    pub fs: String,
+    pub mount: String,
+    pub total: u64,
+    pub used: u64,
+    pub avail: u64,
+    pub use_pct: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StorageSystemInfo {
+    pub uptime: String,
+    pub kernel: String,
+    pub os_name: String,
+    pub os_version: String,
+    pub hostname: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FolderSize {
+    pub path: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AgeHistogram {
+    pub last_24h_bytes: u64,
+    pub last_7d_bytes: u64,
+    pub last_30d_bytes: u64,
+    pub last_90d_bytes: u64,
+    pub older_bytes: u64,
+    pub total_files: u64,
+}
+
+#[tauri::command]
+pub async fn storage_overview(
+    state: tauri::State<'_, SshState>,
+) -> Result<Vec<DiskMount>, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let output = bundle.exec("df -PB1 2>/dev/null")?;
+        let mut mounts = Vec::new();
+
+        for line in output.lines().skip(1) {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            if cols.len() < 6 {
+                continue;
+            }
+            let fs = cols[0].to_string();
+            let total: u64 = cols[1].parse().unwrap_or(0);
+            let used: u64 = cols[2].parse().unwrap_or(0);
+            let avail: u64 = cols[3].parse().unwrap_or(0);
+            let pct_str = cols[4].trim_end_matches('%');
+            let use_pct: f64 = pct_str.parse().unwrap_or(0.0);
+            let mount = cols[5].to_string();
+
+            // Skip pseudo-filesystems
+            if fs == "tmpfs"
+                || fs == "devtmpfs"
+                || fs == "udev"
+                || fs == "none"
+                || fs.starts_with("overlay")
+                || fs.contains("shm")
+                || fs.starts_with("cgroup")
+                || fs.starts_with("proc")
+                || fs.starts_with("sysfs")
+            {
+                continue;
+            }
+
+            mounts.push(DiskMount {
+                fs,
+                mount,
+                total,
+                used,
+                avail,
+                use_pct,
+            });
+        }
+
+        Ok(mounts)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+#[tauri::command]
+pub async fn storage_system_info(
+    state: tauri::State<'_, SshState>,
+) -> Result<StorageSystemInfo, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let uptime = bundle
+            .exec("uptime -p 2>/dev/null || uptime")
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        let kernel = bundle
+            .exec("uname -r 2>/dev/null")
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        let hostname = bundle
+            .exec("hostname 2>/dev/null")
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        let os_raw = bundle
+            .exec(
+                "cat /etc/os-release 2>/dev/null \
+                 || cat /etc/redhat-release 2>/dev/null \
+                 || uname -s",
+            )
+            .unwrap_or_default();
+
+        let mut os_name = String::from("Linux");
+        let mut os_version = String::new();
+
+        for line in os_raw.lines() {
+            if line.starts_with("NAME=") {
+                os_name = line
+                    .trim_start_matches("NAME=")
+                    .trim_matches('"')
+                    .to_string();
+            } else if line.starts_with("VERSION_ID=") {
+                os_version = line
+                    .trim_start_matches("VERSION_ID=")
+                    .trim_matches('"')
+                    .to_string();
+            } else if line.starts_with("VERSION=") && os_version.is_empty() {
+                os_version = line
+                    .trim_start_matches("VERSION=")
+                    .trim_matches('"')
+                    .to_string();
+            }
+        }
+
+        Ok(StorageSystemInfo {
+            uptime: uptime.trim().to_string(),
+            kernel: kernel.trim().to_string(),
+            os_name,
+            os_version,
+            hostname: hostname.trim().to_string(),
+        })
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+#[tauri::command]
+pub async fn storage_scan_root(
+    depth: Option<u8>,
+    state: tauri::State<'_, SshState>,
+) -> Result<Vec<FolderSize>, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let d = depth.unwrap_or(1);
+        let cmd = throttle(&format!("du -x -B1 -d {d} / 2>/dev/null"), 180);
+        let output = bundle.exec(&cmd)?;
+
+        let mut folders: Vec<FolderSize> = output
+            .lines()
+            .filter_map(|line| {
+                let mut parts = line.splitn(2, '\t');
+                let size: u64 = parts.next()?.parse().ok()?;
+                let path = parts.next()?.trim().to_string();
+                Some(FolderSize {
+                    path,
+                    size_bytes: size,
+                })
+            })
+            .collect();
+
+        // Sort largest first
+        folders.sort_by_key(|f| Reverse(f.size_bytes));
+        Ok(folders)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+#[tauri::command]
+pub async fn storage_age_histogram(
+    path: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<AgeHistogram, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        // -xdev stays on the same filesystem; head -c 4 MB caps output and forces
+        // SIGPIPE to find faster than a line count does.
+        let inner = format!("find {path} -xdev -type f -printf '%T@ %s\\n' 2>/dev/null | head -c 4194304");
+        let cmd = throttle(&inner, 120);
+        let output = bundle.exec(&cmd)?;
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs_f64();
+
+        const DAY: f64 = 86400.0;
+        let mut last_24h: u64 = 0;
+        let mut last_7d: u64 = 0;
+        let mut last_30d: u64 = 0;
+        let mut last_90d: u64 = 0;
+        let mut older: u64 = 0;
+        let mut total_files: u64 = 0;
+
+        for line in output.lines() {
+            let mut parts = line.splitn(2, ' ');
+            let mtime: f64 = match parts.next().and_then(|s| s.parse().ok()) {
+                Some(v) => v,
+                None => continue,
+            };
+            let size: u64 = match parts.next().and_then(|s| s.trim().parse().ok()) {
+                Some(v) => v,
+                None => continue,
+            };
+
+            total_files += 1;
+            let age_days = (now - mtime) / DAY;
+
+            if age_days < 1.0 {
+                last_24h += size;
+            } else if age_days < 7.0 {
+                last_7d += size;
+            } else if age_days < 30.0 {
+                last_30d += size;
+            } else if age_days < 90.0 {
+                last_90d += size;
+            } else {
+                older += size;
+            }
+        }
+
+        Ok(AgeHistogram {
+            last_24h_bytes: last_24h,
+            last_7d_bytes: last_7d,
+            last_30d_bytes: last_30d,
+            last_90d_bytes: last_90d,
+            older_bytes: older,
+            total_files,
+        })
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+// ── Phase 2 ───────────────────────────────────────────────────────────────────
+
+/// Scan one directory at the given depth and return folder sizes, sorted largest-first.
+/// Each tree-node expansion calls this; depth 1 is fast on any directory.
+#[tauri::command]
+pub async fn storage_scan_path(
+    path: String,
+    depth: Option<u8>,
+    state: tauri::State<'_, SshState>,
+) -> Result<Vec<FolderSize>, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let d = depth.unwrap_or(1);
+        let cmd = throttle(&format!("du -x -B1 -d {d} -- {path} 2>/dev/null"), 60);
+        let output = bundle.exec(&cmd)?;
+
+        let mut folders: Vec<FolderSize> = output
+            .lines()
+            .filter_map(|line| {
+                let mut parts = line.splitn(2, '\t');
+                let size: u64 = parts.next()?.parse().ok()?;
+                let p = parts.next()?.trim().to_string();
+                // Skip the summary line (same as requested path)
+                if p == path {
+                    return None;
+                }
+                Some(FolderSize {
+                    path: p,
+                    size_bytes: size,
+                })
+            })
+            .collect();
+
+        folders.sort_by_key(|f| Reverse(f.size_bytes));
+        Ok(folders)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+#[derive(Debug, Serialize)]
+pub struct LargestFile {
+    pub path: String,
+    pub size_bytes: u64,
+    pub modified: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LargestKind {
+    Files,
+    Folders,
+}
+
+/// Quick targeted sizes for category bucketing — runs `du -B1 -s` on known paths.
+/// Much faster than a deep scan because it only summarises specific directories.
+#[tauri::command]
+pub async fn storage_category_sizes(
+    state: tauri::State<'_, SshState>,
+) -> Result<Vec<FolderSize>, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let inner = "du -B1 -s \
+            /home /root \
+            /usr /opt \
+            /var/log \
+            /var/cache \
+            /var/lib/docker \
+            /var/lib/mysql /var/lib/postgresql /var/lib/pgsql \
+            /var/lib \
+            /var/tmp /tmp \
+            /boot /boot/efi \
+            /srv \
+            /snap \
+            /data /backup /backups \
+            2>/dev/null";
+
+        let cmd = throttle(inner, 60);
+        let output = bundle.exec(&cmd)?;
+
+        Ok(output
+            .lines()
+            .filter_map(|line| {
+                let mut parts = line.splitn(2, '\t');
+                let size: u64 = parts.next()?.parse().ok()?;
+                let path = parts.next()?.trim().to_string();
+                Some(FolderSize {
+                    path,
+                    size_bytes: size,
+                })
+            })
+            .collect())
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+// ── Phase 4: Cleanup Center + Duplicates ─────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct CleanupEstimate {
+    pub target: String,
+    pub estimated_bytes: u64,
+    pub command_preview: String,
+    pub sudo_required: bool,
+    pub available: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CleanupResult {
+    pub bytes_freed: u64,
+    pub duration_ms: u64,
+    pub exit_code: i32,
+    pub stderr: String,
+    pub command_run: String,
+    pub sudo_used: bool,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct DuplicateFile {
+    pub path: String,
+    pub size_bytes: u64,
+    pub modified: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DuplicateGroup {
+    pub hash: String,
+    pub size_bytes: u64,
+    pub files: Vec<DuplicateFile>,
+}
+
+fn check_avail(bundle: &crate::ssh::SessionBundle, check: &str) -> bool {
+    if check.is_empty() {
+        return true;
+    }
+    let cmd = format!(
+        "{{ {}; }} >/dev/null 2>&1 && echo __YES__ || echo __NO__",
+        check
+    );
+    bundle
+        .exec(&cmd)
+        .map(|out| out.contains("__YES__"))
+        .unwrap_or(false)
+}
+
+/// Check whether passwordless sudo is available on the remote server.
+#[tauri::command]
+pub async fn storage_check_sudo(state: tauri::State<'_, SshState>) -> Result<bool, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let out = bundle.exec("sudo -n true >/dev/null 2>&1 && echo __YES__ || echo __NO__")?;
+        Ok(out.contains("__YES__"))
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+/// Estimate reclaimable bytes for a cleanup preset without executing it.
+#[tauri::command]
+pub async fn storage_cleanup_estimate(
+    target: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<CleanupEstimate, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh.lock().map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let (avail_check, estimate_cmd, execute_preview, sudo_req): (&str, &str, &str, bool) =
+            match target.as_str() {
+                "journal-vacuum" => (
+                    "command -v journalctl",
+                    "du -sb /var/log/journal/ /run/log/journal/ 2>/dev/null | awk '{s+=$1} END{print s+0}'",
+                    "journalctl --vacuum-size=100M",
+                    false,
+                ),
+                "apt-cache" => (
+                    "command -v apt-get",
+                    "du -sb /var/cache/apt/archives/ 2>/dev/null | awk '{print $1+0}'",
+                    "apt-get clean -y",
+                    true,
+                ),
+                "dnf-cache" => (
+                    "command -v dnf",
+                    "du -sb /var/cache/dnf/ 2>/dev/null | awk '{print $1+0}'",
+                    "dnf clean all -y",
+                    true,
+                ),
+                "yum-cache" => (
+                    "command -v yum",
+                    "du -sb /var/cache/yum/ 2>/dev/null | awk '{print $1+0}'",
+                    "yum clean all -y",
+                    true,
+                ),
+                "docker-prune" => (
+                    "command -v docker",
+                    "du -sb /var/lib/docker/overlay2/ /var/lib/docker/tmp/ 2>/dev/null | awk '{s+=$1} END{print s+0}'",
+                    "docker system prune -af",
+                    false,
+                ),
+                "docker-volumes-prune" => (
+                    "command -v docker",
+                    "du -sb /var/lib/docker/volumes/ 2>/dev/null | awk '{print $1+0}'",
+                    "docker system prune -af --volumes",
+                    false,
+                ),
+                "tmp-old" => (
+                    "",
+                    "find /tmp -maxdepth 3 -type f -atime +90 2>/dev/null | xargs -d '\\n' du -sb 2>/dev/null | awk '{s+=$1} END{print s+0}'",
+                    "find /tmp -maxdepth 3 -type f -atime +90 -delete",
+                    false,
+                ),
+                "coredumps" => (
+                    "",
+                    "find /var/crash /var/core /tmp -maxdepth 3 -type f \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) 2>/dev/null | xargs -d '\\n' du -sb 2>/dev/null | awk '{s+=$1} END{print s+0}'",
+                    "find /var/crash /var/core /tmp -maxdepth 3 -type f \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) -delete",
+                    false,
+                ),
+                "old-logs" => (
+                    "",
+                    "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) 2>/dev/null | xargs -d '\\n' du -sb 2>/dev/null | awk '{s+=$1} END{print s+0}'",
+                    "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) -delete",
+                    true,
+                ),
+                _ => return Err(AppError::internal(format!("Unknown cleanup target: {target}"))),
+            };
+
+        let available = check_avail(bundle, avail_check);
+
+        let estimated_bytes = if available {
+            bundle
+                .exec(estimate_cmd)
+                .ok()
+                .and_then(|out| out.trim().parse::<u64>().ok())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        Ok(CleanupEstimate {
+            target,
+            estimated_bytes,
+            command_preview: execute_preview.to_string(),
+            sudo_required: sudo_req,
+            available,
+        })
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+/// Execute a cleanup preset with optional sudo password.
+#[tauri::command]
+pub async fn storage_cleanup_execute(
+    target: String,
+    sudo_password: Option<String>,
+    state: tauri::State<'_, SshState>,
+) -> Result<CleanupResult, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh.lock().map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let (execute_cmd, sudo_required): (&str, bool) = match target.as_str() {
+            "journal-vacuum" => ("journalctl --vacuum-size=100M", false),
+            "apt-cache" => ("apt-get clean -y", true),
+            "dnf-cache" => ("dnf clean all -y", true),
+            "yum-cache" => ("yum clean all -y", true),
+            "docker-prune" => ("docker system prune -af", false),
+            "docker-volumes-prune" => ("docker system prune -af --volumes", false),
+            "tmp-old" => ("find /tmp -maxdepth 3 -type f -atime +90 -delete", false),
+            "coredumps" => (
+                "find /var/crash /var/core /tmp -maxdepth 3 -type f \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) -delete",
+                false,
+            ),
+            "old-logs" => (
+                "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) -delete",
+                true,
+            ),
+            _ => return Err(AppError::internal(format!("Unknown cleanup target: {target}"))),
+        };
+
+        let command_run = if sudo_required {
+            match sudo_password.as_deref().filter(|p| !p.is_empty()) {
+                Some(pw) => {
+                    let escaped = pw.replace('\'', "'\\''");
+                    format!("printf '%s\\n' '{}' | sudo -S {}", escaped, execute_cmd)
+                }
+                None => format!("sudo -n {}", execute_cmd),
+            }
+        } else {
+            execute_cmd.to_string()
+        };
+
+        // Wrap with exit code capture; stderr goes to stdout
+        let wrapped = format!("{} 2>&1; echo '__EXITCODE__:'$?", command_run);
+
+        let t0 = std::time::Instant::now();
+        let raw_out = bundle.exec(&wrapped).unwrap_or_default();
+        let duration_ms = t0.elapsed().as_millis() as u64;
+
+        let (output_body, exit_code) = if let Some(pos) = raw_out.rfind("__EXITCODE__:") {
+            let code: i32 = raw_out[pos + 13..].trim().parse().unwrap_or(-1);
+            let body = raw_out[..pos].trim_end().to_string();
+            (body, code)
+        } else {
+            (raw_out, 0)
+        };
+
+        Ok(CleanupResult {
+            bytes_freed: 0,
+            duration_ms,
+            exit_code,
+            stderr: output_body,
+            command_run: execute_cmd.to_string(),
+            sudo_used: sudo_required,
+        })
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+/// Find duplicate candidates under root by grouping files with identical byte sizes.
+///
+/// This is a zero-byte-read algorithm — it only reads filesystem metadata (inode size
+/// field), never file content. False positives are possible (two different files with
+/// the same size) but extremely rare above 1 MB. Use the "Verify" action in the UI to
+/// confirm specific groups before deleting anything.
+///
+/// The `hash` field in DuplicateGroup is set to the file size in bytes as a string
+/// (the grouping key); it is not a cryptographic hash.
+#[tauri::command]
+pub async fn storage_find_duplicates(
+    root: String,
+    min_size_bytes: u64,
+    max_depth: u32,
+    state: tauri::State<'_, SshState>,
+) -> Result<Vec<DuplicateGroup>, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        // Single pass: size + mtime + path — pure metadata, no file content read.
+        // Capped at 1500 entries; head -c 1 MB bounds memory on Rust side.
+        let inner = format!(
+            "find {root} -maxdepth {max_depth} -type f -size +{min_size_bytes}c \
+             -printf '%s\\t%T@\\t%p\\n' 2>/dev/null | sort -rn | head -1500"
+        );
+        let cmd = throttle(&inner, 90);
+        let meta_out = bundle.exec(&cmd).unwrap_or_default();
+
+        // Group by exact byte size in Rust.
+        let mut by_size: HashMap<u64, Vec<DuplicateFile>> = HashMap::new();
+        for line in meta_out.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let mut parts = line.splitn(3, '\t');
+            let size: u64 = match parts.next().and_then(|s| s.parse().ok()) {
+                Some(v) if v > 0 => v,
+                _ => continue,
+            };
+            let modified: Option<u64> = parts
+                .next()
+                .and_then(|s| s.parse::<f64>().ok())
+                .map(|f| f as u64);
+            let path = match parts.next() {
+                Some(p) if !p.trim().is_empty() => p.trim().to_string(),
+                _ => continue,
+            };
+            by_size.entry(size).or_default().push(DuplicateFile {
+                path,
+                size_bytes: size,
+                modified,
+            });
+        }
+
+        // Keep only size groups that have 2+ files (actual duplicate candidates).
+        let mut groups: Vec<DuplicateGroup> = by_size
+            .into_iter()
+            .filter(|(_, files)| files.len() >= 2)
+            .map(|(size, files)| DuplicateGroup {
+                // Use size as the group identifier — not a hash, just the grouping key.
+                hash: size.to_string(),
+                size_bytes: size,
+                files,
+            })
+            .collect();
+
+        // Sort by recoverable bytes (size × number of extras), largest first.
+        groups.sort_by_key(|g| {
+            Reverse(
+                g.size_bytes
+                    .saturating_mul(g.files.len().saturating_sub(1) as u64),
+            )
+        });
+        groups.truncate(200);
+
+        Ok(groups)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+/// Return the `limit` largest files or folders under `root`, sorted by size desc.
+#[tauri::command]
+pub async fn storage_largest_items(
+    root: String,
+    kind: LargestKind,
+    limit: Option<u32>,
+    state: tauri::State<'_, SshState>,
+) -> Result<Vec<LargestFile>, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let n = limit.unwrap_or(200);
+
+        let output = match kind {
+            LargestKind::Files => {
+                let inner = format!(
+                    "find {root} -xdev -type f -printf '%s %T@ %P\\n' 2>/dev/null \
+                     | sort -rn | head -{n}"
+                );
+                bundle.exec(&throttle(&inner, 120))?
+            }
+            LargestKind::Folders => {
+                // depth 3 is a safer default than 5 on large trees
+                let inner =
+                    format!("du -x -B1 --max-depth=3 {root} 2>/dev/null | sort -rn | head -{n}");
+                bundle.exec(&throttle(&inner, 120))?
+            }
+        };
+
+        let items: Vec<LargestFile> = match kind {
+            LargestKind::Files => output
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .filter_map(|line| {
+                    let mut parts = line.splitn(3, ' ');
+                    let size: u64 = parts.next()?.parse().ok()?;
+                    let mtime_f: f64 = parts.next()?.parse().ok()?;
+                    let rel_path = parts.next()?.trim();
+                    let full_path = if root.ends_with('/') {
+                        format!("{root}{rel_path}")
+                    } else {
+                        format!("{root}/{rel_path}")
+                    };
+                    Some(LargestFile {
+                        path: full_path,
+                        size_bytes: size,
+                        modified: Some(mtime_f as u64),
+                    })
+                })
+                .collect(),
+            LargestKind::Folders => output
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .filter_map(|line| {
+                    let mut parts = line.splitn(2, '\t');
+                    let size: u64 = parts.next()?.parse().ok()?;
+                    let path = parts.next()?.trim().to_string();
+                    Some(LargestFile {
+                        path,
+                        size_bytes: size,
+                        modified: None,
+                    })
+                })
+                .collect(),
+        };
+
+        Ok(items)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
