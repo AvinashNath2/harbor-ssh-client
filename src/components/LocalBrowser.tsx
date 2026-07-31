@@ -11,25 +11,31 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   deleteLocalPath,
   listLocalFolder,
   renameLocalPath,
   revealInFinder,
+  statLocalPath,
   type LocalFileEntry,
 } from "../api";
 import { useElementWidth } from "../hooks/useElementWidth";
+import { useSortedEntries } from "../hooks/useSortedEntries";
 import type { LocalTab } from "../hooks/useLocalFiles";
 import { fileIcon, fileTypeLabel } from "../utils/fileType";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { StaleListingBanner } from "./StaleListingBanner";
 
 const HARBOR_LOCAL_MIME = "application/x-harbor-local";
 const HARBOR_REMOTE_MIME = "application/x-harbor-remote";
 const COMPACT_THRESHOLD = 500;
 const GRID_WIDE = "16px minmax(0,1fr) 110px 78px 118px";
 const GRID_COMPACT = "16px minmax(0,1fr) 70px 110px";
+const ROW_HEIGHT = 31;
+const ROW_HEIGHT_COMPACT = 31;
 
 type SortCol = "name" | "size" | "modified" | "type";
 type SortDir = "asc" | "desc";
@@ -97,6 +103,7 @@ export function LocalBrowser({
 
   // Last clicked index for shift-click range selection.
   const lastClickedIndexRef = useRef<number>(-1);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [pathValid, setPathValid] = useState<boolean | null>(null);
   const pathValidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,14 +150,13 @@ export function LocalBrowser({
     }
     if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current);
     pathValidTimerRef.current = setTimeout(() => {
-      const lastSlash = raw.lastIndexOf("/");
-      const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
-      const base = raw.endsWith("/") ? "" : raw.slice(lastSlash + 1);
-      const checkDir = raw.endsWith("/") ? raw.replace(/\/$/, "") || "/" : dir;
-      void listLocalFolder(checkDir)
-        .then((entries) => {
-          setPathValid(!base || entries.some((en) => en.name === base));
-        })
+      const target = raw.endsWith("\\") || raw.endsWith("/") ? raw.replace(/[/\\]$/, "") : raw;
+      if (!target) {
+        setPathValid(false);
+        return;
+      }
+      void statLocalPath(target)
+        .then(setPathValid)
         .catch(() => {
           setPathValid(false);
         });
@@ -211,29 +217,15 @@ export function LocalBrowser({
     onNavigate(parent);
   }
 
-  // Sort + filter.
-  const visibleEntries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const filtered = q ? tab.entries.filter((e) => e.name.toLowerCase().includes(q)) : tab.entries;
+  const { visibleEntries } = useSortedEntries(tab.entries, search, sortCol, sortDir);
 
-    const mul = sortDir === "asc" ? 1 : -1;
-    return [...filtered].sort((a, b) => {
-      const aDir = a.kind === "directory";
-      const bDir = b.kind === "directory";
-      if (aDir !== bDir) return aDir ? -1 : 1;
-      switch (sortCol) {
-        case "size":
-          return mul * ((a.size ?? 0) - (b.size ?? 0));
-        case "modified":
-          return mul * ((a.modified ?? 0) - (b.modified ?? 0));
-        case "type":
-          return mul * fileTypeLabel(a.name, a.kind).localeCompare(fileTypeLabel(b.name, b.kind));
-        case "name":
-        default:
-          return mul * a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-      }
-    });
-  }, [tab.entries, search, sortCol, sortDir]);
+  const rowHeight = compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT;
+  const virtualizer = useVirtualizer({
+    count: visibleEntries.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 15,
+  });
 
   function toggleSort(col: SortCol) {
     if (col === sortCol) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -546,11 +538,18 @@ export function LocalBrowser({
         <button
           onClick={onReload}
           title="Reload (⌘R)"
-          className="text-text-faint transition-colors hover:text-text-secondary"
+          className={`text-text-faint transition-colors hover:text-text-secondary ${tab.refreshStatus === "refreshing" ? "animate-spin" : ""}`}
         >
           <RefreshCw size={13} strokeWidth={2} />
         </button>
       </div>
+
+      {tab.refreshStatus === "refreshing" && (
+        <StaleListingBanner
+          estimatedLoadMs={tab.estimatedLoadMs ?? undefined}
+          refreshStartedAt={tab.refreshStartedAt ?? undefined}
+        />
+      )}
 
       {/* Column headers */}
       <div
@@ -581,12 +580,13 @@ export function LocalBrowser({
 
       {/* Content */}
       <div
+        ref={scrollRef}
         className="min-h-0 flex-1 overflow-auto"
         onClick={() => {
           onSelectionChange(new Set());
         }}
       >
-        {tab.status === "loading" && (
+        {tab.status === "loading" && tab.entries.length === 0 && (
           <div className="flex h-full items-center justify-center text-[13px] text-text-faint">
             Loading…
           </div>
@@ -607,7 +607,7 @@ export function LocalBrowser({
           </div>
         )}
 
-        {tab.status === "ready" && (
+        {(tab.status === "ready" || (tab.status === "loading" && tab.entries.length > 0)) && (
           <>
             {renameError && (
               <div className="flex items-center justify-between gap-3 border-b border-danger/20 bg-danger/10 px-4 py-2">
@@ -641,34 +641,60 @@ export function LocalBrowser({
               </div>
             )}
 
-            {visibleEntries.map((entry, idx) => (
-              <LocalRow
-                key={entry.path}
-                entry={entry}
-                isSelected={selected.has(entry.path)}
-                isRenaming={renamingPath === entry.path}
-                compact={compact}
-                gridCols={gridCols}
-                onClick={(e) => {
-                  handleRowClick(e, entry, idx);
+            {visibleEntries.length > 0 && (
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize().toString()}px`,
+                  width: "100%",
+                  position: "relative",
                 }}
-                onDoubleClick={() => {
-                  handleRowDoubleClick(entry);
-                }}
-                onContextMenu={(e) => {
-                  handleRowContextMenu(e, entry);
-                }}
-                onRenameCommit={(oldPath, newName) => {
-                  setRenamingPath(null);
-                  if (newName) void handleRename(oldPath, newName);
-                }}
-                onDragStart={(e) => {
-                  const paths = selected.has(entry.path) ? Array.from(selected) : [entry.path];
-                  e.dataTransfer.setData(HARBOR_LOCAL_MIME, JSON.stringify(paths));
-                  e.dataTransfer.effectAllowed = "copy";
-                }}
-              />
-            ))}
+              >
+                {virtualizer.getVirtualItems().map((vRow) => {
+                  const entry = visibleEntries[vRow.index];
+                  return (
+                    <div
+                      key={entry.path}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: `${vRow.size.toString()}px`,
+                        transform: `translateY(${vRow.start.toString()}px)`,
+                      }}
+                    >
+                      <LocalRow
+                        entry={entry}
+                        isSelected={selected.has(entry.path)}
+                        isRenaming={renamingPath === entry.path}
+                        compact={compact}
+                        gridCols={gridCols}
+                        onClick={(e) => {
+                          handleRowClick(e, entry, vRow.index);
+                        }}
+                        onDoubleClick={() => {
+                          handleRowDoubleClick(entry);
+                        }}
+                        onContextMenu={(e) => {
+                          handleRowContextMenu(e, entry);
+                        }}
+                        onRenameCommit={(oldPath, newName) => {
+                          setRenamingPath(null);
+                          if (newName) void handleRename(oldPath, newName);
+                        }}
+                        onDragStart={(e) => {
+                          const paths = selected.has(entry.path)
+                            ? Array.from(selected)
+                            : [entry.path];
+                          e.dataTransfer.setData(HARBOR_LOCAL_MIME, JSON.stringify(paths));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {tab.entries.length === 0 && !search && (
               <div className="flex h-20 items-center justify-center text-[13px] text-text-faint">
@@ -730,6 +756,7 @@ export function LocalBrowser({
             {search && visibleEntries.length !== tab.entries.length
               ? `  |  ${visibleEntries.length.toString()} shown`
               : ""}
+            {tab.refreshStatus === "refreshing" ? "  |  Not latest" : ""}
           </span>
           {selected.size > 0 && (
             <button

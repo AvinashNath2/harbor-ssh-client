@@ -2,17 +2,20 @@ use std::sync::Arc;
 
 use tauri::Emitter;
 
-use crate::models::{AppError, FileEntry, FileInfo, TransferProgress};
+use crate::models::{
+    AppError, FileEntry, FileInfo, FolderListChunk, FolderListDone, FolderListError,
+    TransferProgress,
+};
 use crate::ssh::SshState;
 
 macro_rules! sftp_op {
     ($state:expr, |$bundle:ident| $body:expr) => {{
         let ssh = Arc::clone(&$state.inner);
         tauri::async_runtime::spawn_blocking(move || {
-            let guard = ssh
+            let mut guard = ssh
                 .lock()
                 .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-            let $bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+            let $bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
             $body
         })
         .await
@@ -21,11 +24,126 @@ macro_rules! sftp_op {
 }
 
 #[tauri::command]
+pub async fn stat_path(state: tauri::State<'_, SshState>, path: String) -> Result<bool, AppError> {
+    sftp_op!(state, |bundle| bundle.path_exists(&path))
+}
+
+#[tauri::command]
 pub async fn list_folder(
     state: tauri::State<'_, SshState>,
     path: String,
 ) -> Result<Vec<FileEntry>, AppError> {
     sftp_op!(state, |bundle| bundle.list_dir(&path))
+}
+
+const LIST_CHUNK_SIZE: usize = 500;
+
+#[tauri::command]
+pub async fn list_folder_stream(
+    state: tauri::State<'_, SshState>,
+    app: tauri::AppHandle,
+    path: String,
+    list_id: String,
+) -> Result<(), AppError> {
+    {
+        let mut cancelled = state
+            .cancelled_lists
+            .lock()
+            .map_err(|_| AppError::internal("mutex poisoned"))?;
+        cancelled.remove(&list_id);
+    }
+
+    let ssh = Arc::clone(&state.inner);
+    let cancelled_lists = Arc::clone(&state.cancelled_lists);
+    let cancelled_lists3 = Arc::clone(&cancelled_lists);
+    let path2 = path.clone();
+    let list_id2 = list_id.clone();
+    let list_id4 = list_id.clone();
+    let app2 = app.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            let mut guard = ssh
+                .lock()
+                .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+            let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
+
+            let cancelled_lists2 = Arc::clone(&cancelled_lists);
+            let list_id3 = list_id2.clone();
+            let mut is_cancelled = move || {
+                cancelled_lists2
+                    .lock()
+                    .ok()
+                    .is_some_and(|s| s.contains(&list_id3))
+            };
+
+            let total = bundle.list_dir_stream(
+                &path2,
+                LIST_CHUNK_SIZE,
+                &mut is_cancelled,
+                |entries, offset| {
+                    let _ = app2.emit(
+                        "folder-list-chunk",
+                        FolderListChunk {
+                            list_id: list_id2.clone(),
+                            entries,
+                            offset,
+                        },
+                    );
+                },
+            )?;
+
+            Ok::<usize, AppError>(total)
+        })
+        .await;
+
+        match result {
+            Ok(Ok(total)) => {
+                let was_cancelled = cancelled_lists3
+                    .lock()
+                    .ok()
+                    .is_some_and(|s| s.contains(&list_id4));
+                if was_cancelled {
+                    let _ = cancelled_lists3.lock().map(|mut s| s.remove(&list_id4));
+                    return;
+                }
+                let _ = app.emit("folder-list-done", FolderListDone { list_id, total });
+            }
+            Ok(Err(e)) => {
+                let _ = app.emit(
+                    "folder-list-error",
+                    FolderListError {
+                        list_id,
+                        message: e.message,
+                    },
+                );
+            }
+            Err(e) => {
+                let _ = app.emit(
+                    "folder-list-error",
+                    FolderListError {
+                        list_id,
+                        message: e.to_string(),
+                    },
+                );
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_folder_list(
+    state: tauri::State<'_, SshState>,
+    list_id: String,
+) -> Result<(), AppError> {
+    state
+        .cancelled_lists
+        .lock()
+        .map_err(|_| AppError::internal("mutex poisoned"))?
+        .insert(list_id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -88,10 +206,10 @@ pub async fn download_file_queued(
         let app2 = app.clone();
 
         let result = tauri::async_runtime::spawn_blocking(move || {
-            let guard = ssh2
+            let mut guard = ssh2
                 .lock()
                 .map_err(|_| AppError::internal("mutex poisoned"))?;
-            let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+            let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
             let tid_inner = tid.clone();
             let app_inner = app2.clone();
@@ -156,10 +274,10 @@ pub async fn upload_file_queued(
         let app2 = app.clone();
 
         let result = tauri::async_runtime::spawn_blocking(move || {
-            let guard = ssh2
+            let mut guard = ssh2
                 .lock()
                 .map_err(|_| AppError::internal("mutex poisoned"))?;
-            let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+            let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
             let tid_inner = tid.clone();
             let app_inner = app2.clone();

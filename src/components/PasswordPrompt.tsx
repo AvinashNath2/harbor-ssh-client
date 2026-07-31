@@ -3,7 +3,7 @@ import type { ConnectionProfile } from "../api";
 
 /**
  * Small centered modal that asks for the SSH password of a saved
- * password-auth profile. Used for the "click to connect directly" flow.
+ * password-auth profile. Used when no password is stored yet.
  */
 export function PasswordPrompt({
   profile,
@@ -15,10 +15,12 @@ export function PasswordPrompt({
   profile: ConnectionProfile;
   isLoading: boolean;
   error: string | null;
-  onSubmit: (password: string) => void;
+  onSubmit: (password: string, savePassword: boolean) => void;
   onCancel: () => void;
 }) {
   const [password, setPassword] = useState("");
+  const [dontSavePassword, setDontSavePassword] = useState(false);
+
   return (
     <div
       className="absolute inset-0 z-50 flex items-center justify-center"
@@ -42,7 +44,7 @@ export function PasswordPrompt({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!isLoading) onSubmit(password);
+            if (!isLoading) onSubmit(password, !dontSavePassword);
           }}
           className="flex flex-col gap-3 px-5 py-4"
         >
@@ -61,6 +63,17 @@ export function PasswordPrompt({
             placeholder="Password"
             className="h-9 rounded-input border border-border-input bg-surface-pane px-3 text-[13px] text-text-primary outline-none focus:border-accent-dark"
           />
+          <label className="flex cursor-pointer items-center gap-2 text-[11.5px] text-text-secondary">
+            <input
+              type="checkbox"
+              checked={dontSavePassword}
+              onChange={(e) => {
+                setDontSavePassword(e.target.checked);
+              }}
+              className="h-3 w-3 accent-accent-dark"
+            />
+            Don&apos;t save password
+          </label>
           <div className="flex gap-2 pt-1">
             <button
               type="button"
