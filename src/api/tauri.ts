@@ -104,6 +104,10 @@ export interface ConnectionProfile {
   folder?: string;
   favorite?: boolean;
   lastConnected?: number;
+  /** Stored SSH password for password-auth profiles (saved locally in connections.json). */
+  savedPassword?: string;
+  /** Stored passphrase for encrypted private keys. */
+  savedKeyPassphrase?: string;
 }
 
 export async function listProfiles(): Promise<ConnectionProfile[]> {
@@ -134,6 +138,10 @@ export interface FileEntry {
 
 export async function listFolder(path: string): Promise<FileEntry[]> {
   return invoke<FileEntry[]>("list_folder", { path });
+}
+
+export async function statPath(path: string): Promise<boolean> {
+  return invoke<boolean>("stat_path", { path });
 }
 
 // ── Phase 3 — File operations ─────────────────────────────────────────────────
@@ -174,6 +182,10 @@ export async function getLocalHome(): Promise<string> {
 
 export async function listLocalFolder(path: string): Promise<LocalFileEntry[]> {
   return invoke<LocalFileEntry[]>("list_local_folder", { path });
+}
+
+export async function statLocalPath(path: string): Promise<boolean> {
+  return invoke<boolean>("stat_local_path", { path });
 }
 
 export async function renameLocalPath(oldPath: string, newName: string): Promise<void> {

@@ -13,16 +13,28 @@ pub mod ssh_config;
 pub mod status;
 pub mod terminal;
 
+pub use agent_tools::{
+    agent_docker_inspect, agent_docker_list_containers, agent_docker_logs, agent_docker_networks,
+    agent_docker_stats, agent_docker_volumes, agent_exec_read, agent_exec_write,
+    agent_list_directory, agent_read_file,
+};
 pub use connect::{connect, reconnect, test_connection};
 pub use disconnect::disconnect;
+pub use docker::{
+    docker_all_container_stats, docker_all_mounts, docker_available, docker_container_events,
+    docker_container_inspect, docker_container_logs, docker_container_stats, list_compose_projects,
+    list_docker_containers, list_docker_images, list_docker_networks, list_docker_volumes,
+};
 pub use downloads::{clear_download_history, delete_download, list_downloads, save_download};
 pub use fs::{
-    cancel_transfer, chmod_file, compute_folder_size, create_folder, delete_path, download_file,
-    download_file_queued, get_file_info, list_folder, read_file_preview, rename_path, upload_file,
-    upload_file_queued, write_file_text,
+    cancel_folder_list, cancel_transfer, chmod_file, compute_folder_size, create_folder,
+    delete_path, download_file, download_file_queued, get_file_info, list_folder,
+    list_folder_stream, read_file_preview, rename_path, stat_path, upload_file, upload_file_queued,
+    write_file_text,
 };
 pub use local_fs::{
     delete_local_path, get_local_home, list_local_folder, rename_local_path, reveal_in_finder,
+    stat_local_path,
 };
 pub use ping::ping;
 pub use port_forward::{
@@ -36,13 +48,3 @@ pub use session_log::{
 pub use ssh_config::parse_ssh_config;
 pub use status::{connection_status, ping_connection};
 pub use terminal::{close_terminal, open_terminal, resize_terminal, write_terminal};
-pub use docker::{
-    docker_all_container_stats, docker_all_mounts, docker_available, docker_container_events,
-    docker_container_inspect, docker_container_logs, docker_container_stats, list_compose_projects,
-    list_docker_containers, list_docker_images, list_docker_networks, list_docker_volumes,
-};
-pub use agent_tools::{
-    agent_docker_inspect, agent_docker_list_containers, agent_docker_logs, agent_docker_networks,
-    agent_docker_stats, agent_docker_volumes, agent_exec_read, agent_exec_write,
-    agent_list_directory, agent_read_file,
-};

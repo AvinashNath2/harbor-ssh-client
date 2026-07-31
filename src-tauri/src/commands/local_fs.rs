@@ -8,6 +8,11 @@ pub fn get_local_home() -> Result<String, AppError> {
 }
 
 #[tauri::command]
+pub fn stat_local_path(path: String) -> Result<bool, AppError> {
+    Ok(std::path::Path::new(&path).exists())
+}
+
+#[tauri::command]
 pub fn list_local_folder(path: String) -> Result<Vec<LocalFileEntry>, AppError> {
     let iter = std::fs::read_dir(&path)
         .map_err(|e| AppError::internal(format!("Cannot read directory: {e}")))?;
