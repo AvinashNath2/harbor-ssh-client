@@ -105,22 +105,62 @@ fn run_on_shared(
 /// these patterns appear anywhere in the command (guards against smuggled writes).
 fn has_forbidden_pattern(cmd: &str) -> bool {
     let deny_substrings = [
-        " > ", " >> ", ">>", ">|",
-        "| tee", " tee ",
-        "&& rm", "&& mv", "&& cp", "&& dd", "&& sudo", "&& su ",
-        "; rm", "; mv", "; cp", "; dd", "; sudo", "; su ",
-        "`", "$(",           // command substitution
-        " sudo ", " su ",
-        " rm ", " mv ", " cp ", " dd ",
-        " chmod ", " chown ", " truncate ",
-        " apt ", " apt-get ", " yum ", " dnf ", " pacman ",
-        " systemctl start ", " systemctl stop ", " systemctl restart ",
-        " systemctl enable ", " systemctl disable ",
-        " docker run ", " docker exec ", " docker start ", " docker stop ",
-        " docker restart ", " docker kill ", " docker rm ", " docker rmi ",
-        " docker pull ", " docker push ", " docker build ", " docker commit ",
-        " docker prune ", " docker system prune", " docker volume rm ",
-        " docker network rm ", " docker network create ",
+        " > ",
+        " >> ",
+        ">>",
+        ">|",
+        "| tee",
+        " tee ",
+        "&& rm",
+        "&& mv",
+        "&& cp",
+        "&& dd",
+        "&& sudo",
+        "&& su ",
+        "; rm",
+        "; mv",
+        "; cp",
+        "; dd",
+        "; sudo",
+        "; su ",
+        "`",
+        "$(", // command substitution
+        " sudo ",
+        " su ",
+        " rm ",
+        " mv ",
+        " cp ",
+        " dd ",
+        " chmod ",
+        " chown ",
+        " truncate ",
+        " apt ",
+        " apt-get ",
+        " yum ",
+        " dnf ",
+        " pacman ",
+        " systemctl start ",
+        " systemctl stop ",
+        " systemctl restart ",
+        " systemctl enable ",
+        " systemctl disable ",
+        " docker run ",
+        " docker exec ",
+        " docker start ",
+        " docker stop ",
+        " docker restart ",
+        " docker kill ",
+        " docker rm ",
+        " docker rmi ",
+        " docker pull ",
+        " docker push ",
+        " docker build ",
+        " docker commit ",
+        " docker prune ",
+        " docker system prune",
+        " docker volume rm ",
+        " docker network rm ",
+        " docker network create ",
     ];
     let padded = format!(" {} ", cmd);
     deny_substrings.iter().any(|p| padded.contains(p))
@@ -157,15 +197,13 @@ fn head_is_read_only(cmd: &str) -> bool {
                     | "network"    // rules: only `network ls` and `network inspect`
                     | "volume"     // rules: only `volume ls` and `volume inspect`
                     | "system"     // rules: only `system df` / `system info`
-                    | "container"  // rules: only `container ls` / `container inspect`
+                    | "container" // rules: only `container ls` / `container inspect`
                 )
             }
-            "ls" | "cat" | "head" | "tail" | "grep" | "egrep" | "fgrep"
-            | "find" | "wc" | "awk" | "sort" | "uniq" | "cut" | "tr"
-            | "df" | "du" | "free" | "ps" | "top" | "uptime" | "uname"
-            | "hostname" | "whoami" | "id" | "echo" | "date" | "which"
-            | "printenv" | "env" | "pwd" | "stat" | "file" | "readlink"
-            | "column" | "xargs" => true,
+            "ls" | "cat" | "head" | "tail" | "grep" | "egrep" | "fgrep" | "find" | "wc" | "awk"
+            | "sort" | "uniq" | "cut" | "tr" | "df" | "du" | "free" | "ps" | "top" | "uptime"
+            | "uname" | "hostname" | "whoami" | "id" | "echo" | "date" | "which" | "printenv"
+            | "env" | "pwd" | "stat" | "file" | "readlink" | "column" | "xargs" => true,
             // `sed` only in non-in-place mode (no -i).
             "sed" => !stage.contains(" -i"),
             "journalctl" => stage.contains("--no-pager"),
@@ -260,7 +298,11 @@ fn format_containers_summary(raw: &str) -> String {
 fn format_ps_row(r: &DockerPsRow) -> String {
     let compose_project = extract_label(&r.labels, "com.docker.compose.project");
     let name = r.names.trim_start_matches('/');
-    let ports = if r.ports.is_empty() { "-" } else { r.ports.as_str() };
+    let ports = if r.ports.is_empty() {
+        "-"
+    } else {
+        r.ports.as_str()
+    };
     let networks = if r.networks.is_empty() {
         "-"
     } else {
@@ -284,7 +326,7 @@ fn extract_label(labels: &str, key: &str) -> Option<String> {
     labels
         .split(',')
         .find(|kv| kv.trim_start().starts_with(key))
-        .and_then(|kv| kv.splitn(2, '=').nth(1))
+        .and_then(|kv| kv.split_once('=').map(|x| x.1))
         .map(|v| v.trim().to_owned())
         .filter(|v| !v.is_empty())
 }
@@ -386,9 +428,7 @@ pub async fn agent_docker_logs(
             }
             None => String::new(),
         };
-        let cmd = format!(
-            "docker logs {tail_arg} {since_arg} '{escaped_name}' 2>&1 || true"
-        );
+        let cmd = format!("docker logs {tail_arg} {since_arg} '{escaped_name}' 2>&1 || true");
         match run_on_shared(&ssh, &cmd) {
             Ok(out) => Ok(AgentToolResult::ok_string(out, started)),
             Err(e) => Ok(AgentToolResult::err(e.to_string(), started)),
@@ -426,7 +466,10 @@ pub async fn agent_docker_stats(
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
         let started = Instant::now();
-        match run_on_shared(&ssh, "docker stats --no-stream --format '{{json .}}' 2>/dev/null") {
+        match run_on_shared(
+            &ssh,
+            "docker stats --no-stream --format '{{json .}}' 2>/dev/null",
+        ) {
             Ok(raw) => {
                 let pretty = format_stats_summary(&raw);
                 Ok(AgentToolResult::ok_string(pretty, started))
@@ -445,8 +488,7 @@ pub async fn agent_docker_networks(
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
         let started = Instant::now();
-        match run_on_shared(&ssh, "docker network ls --format '{{json .}}' 2>/dev/null",
-        ) {
+        match run_on_shared(&ssh, "docker network ls --format '{{json .}}' 2>/dev/null") {
             Ok(out) => Ok(AgentToolResult::ok_string(out, started)),
             Err(e) => Ok(AgentToolResult::err(e.to_string(), started)),
         }
@@ -462,8 +504,7 @@ pub async fn agent_docker_volumes(
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
         let started = Instant::now();
-        match run_on_shared(&ssh, "docker volume ls --format '{{json .}}' 2>/dev/null",
-        ) {
+        match run_on_shared(&ssh, "docker volume ls --format '{{json .}}' 2>/dev/null") {
             Ok(out) => Ok(AgentToolResult::ok_string(out, started)),
             Err(e) => Ok(AgentToolResult::err(e.to_string(), started)),
         }

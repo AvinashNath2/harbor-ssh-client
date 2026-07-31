@@ -6,6 +6,7 @@ import {
   uploadFileQueued,
   type TransferProgress,
 } from "../api";
+import { TRANSFER_MAX_CONCURRENT } from "../config";
 
 export type TransferDirection = "upload" | "download";
 export type TransferStatus = "pending" | "active" | "done" | "error" | "cancelled";
@@ -27,7 +28,6 @@ interface QueuedItem {
   start: () => Promise<void>;
 }
 
-const MAX_CONCURRENT = 2;
 
 export function useTransferQueue() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -35,7 +35,7 @@ export function useTransferQueue() {
   const activeCountRef = useRef(0);
 
   function startNextFromQueue() {
-    while (activeCountRef.current < MAX_CONCURRENT && queueRef.current.length > 0) {
+    while (activeCountRef.current < TRANSFER_MAX_CONCURRENT && queueRef.current.length > 0) {
       const next = queueRef.current.shift();
       if (!next) break;
       activeCountRef.current++;
@@ -95,7 +95,7 @@ export function useTransferQueue() {
 
   function enqueue(item: QueuedItem) {
     setTransfers((prev) => [...prev, item.transfer]);
-    if (activeCountRef.current < MAX_CONCURRENT) {
+    if (activeCountRef.current < TRANSFER_MAX_CONCURRENT) {
       activeCountRef.current++;
       setTransfers((prev) =>
         prev.map((t) => (t.id === item.transfer.id ? { ...t, status: "active" } : t)),

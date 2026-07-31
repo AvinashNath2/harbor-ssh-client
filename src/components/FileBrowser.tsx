@@ -14,22 +14,29 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { computeFolderSize, listFolder, type FileEntry } from "../api";
+import { useCallback, useEffect, useRef, useState, memo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { computeFolderSize, listFolder, statPath, type FileEntry } from "../api";
 import { useElementWidth } from "../hooks/useElementWidth";
+import { useSortedEntries } from "../hooks/useSortedEntries";
 import type { Tab } from "../hooks/useTabs";
 import { fileIcon, fileTypeLabel } from "../utils/fileType";
+import { normalizeRemotePath, remotePathParent, splitRemotePath } from "../utils/remotePath";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { StaleListingBanner } from "./StaleListingBanner";
+import {
+  BROWSER_COMPACT_THRESHOLD,
+  BROWSER_ROW_HEIGHT,
+  BROWSER_ROW_HEIGHT_COMPACT,
+  BROWSER_GRID_COMPACT,
+  MIME_HARBOR_LOCAL,
+  MIME_HARBOR_REMOTE,
+} from "../config";
 
 type SortColumn = "name" | "size" | "modified" | "type";
 type SortDir = "asc" | "desc";
 
-const COMPACT_THRESHOLD = 560;
 const GRID_WIDE = "16px minmax(0,1fr) 110px 78px 118px 100px";
-const GRID_COMPACT = "16px minmax(0,1fr) 70px 110px";
-
-const HARBOR_LOCAL_MIME = "application/x-harbor-local";
-const HARBOR_REMOTE_MIME = "application/x-harbor-remote";
 
 interface FileBrowserProps {
   tab: Tab;
@@ -73,8 +80,8 @@ export function FileBrowser({
   onShowPreview,
 }: FileBrowserProps) {
   const [containerRef, containerWidth] = useElementWidth();
-  const compact = containerWidth > 0 && containerWidth < COMPACT_THRESHOLD;
-  const gridCols = compact ? GRID_COMPACT : GRID_WIDE;
+  const compact = containerWidth > 0 && containerWidth < BROWSER_COMPACT_THRESHOLD;
+  const gridCols = compact ? BROWSER_GRID_COMPACT : GRID_WIDE;
 
   const [pathInput, setPathInput] = useState("");
   const [editingPath, setEditingPath] = useState(false);
@@ -88,6 +95,7 @@ export function FileBrowser({
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const pathInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const lastClickedIndexRef = useRef<number>(-1);
   const [pathValid, setPathValid] = useState<boolean | null>(null);
   const pathValidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -141,14 +149,9 @@ export function FileBrowser({
     }
     if (pathValidTimerRef.current) clearTimeout(pathValidTimerRef.current);
     pathValidTimerRef.current = setTimeout(() => {
-      const lastSlash = raw.lastIndexOf("/");
-      const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
-      const base = raw.endsWith("/") ? "" : raw.slice(lastSlash + 1);
-      const checkDir = raw.endsWith("/") ? raw.replace(/\/$/, "") || "/" : dir;
-      void listFolder(checkDir)
-        .then((entries) => {
-          setPathValid(!base || entries.some((en) => en.name === base));
-        })
+      const target = normalizeRemotePath(raw.endsWith("/") ? raw.slice(0, -1) || "/" : raw);
+      void statPath(target)
+        .then(setPathValid)
         .catch(() => {
           setPathValid(false);
         });
@@ -175,14 +178,22 @@ export function FileBrowser({
       const lastSlash = raw.lastIndexOf("/");
       const dir = lastSlash <= 0 ? "/" : raw.slice(0, lastSlash);
       const prefix = raw.slice(lastSlash + 1).toLowerCase();
+
+      const applyMatches = (entries: FileEntry[]) => {
+        const matches = entries
+          .filter((en) => en.kind === "directory" && en.name.toLowerCase().startsWith(prefix))
+          .map((en) => (dir === "/" ? "/" + en.name : dir + "/" + en.name));
+        setAcItems(matches.slice(0, 12));
+        setAcIndex(-1);
+      };
+
+      if (dir === tab.path && tab.entries.length > 0) {
+        applyMatches(tab.entries);
+        return;
+      }
+
       void listFolder(dir)
-        .then((entries) => {
-          const matches = entries
-            .filter((en) => en.kind === "directory" && en.name.toLowerCase().startsWith(prefix))
-            .map((en) => (dir === "/" ? "/" + en.name : dir + "/" + en.name));
-          setAcItems(matches.slice(0, 12));
-          setAcIndex(-1);
-        })
+        .then(applyMatches)
         .catch(() => {
           setAcItems([]);
         });
@@ -190,7 +201,7 @@ export function FileBrowser({
     return () => {
       if (acTimerRef.current) clearTimeout(acTimerRef.current);
     };
-  }, [pathInput, editingPath]);
+  }, [pathInput, editingPath, tab.path, tab.entries]);
 
   function requestFolderSize(path: string) {
     // Record indexing is typed as always-defined without noUncheckedIndexedAccess,
@@ -213,37 +224,14 @@ export function FileBrowser({
       });
   }
 
-  // Filter + sort the entries. Folders always come first within a direction.
-  const visibleEntries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const filtered = q ? tab.entries.filter((e) => e.name.toLowerCase().includes(q)) : tab.entries;
-
-    const dirMul = sortDir === "asc" ? 1 : -1;
-    const cmp = (a: FileEntry, b: FileEntry): number => {
-      // Folders always float to the top regardless of sort direction — it's
-      // the file-manager convention users expect.
-      const aDir = a.kind === "directory";
-      const bDir = b.kind === "directory";
-      if (aDir !== bDir) return aDir ? -1 : 1;
-      switch (sortCol) {
-        case "size": {
-          const as = a.kind === "directory" ? (folderSizes[a.path] ?? -1) : (a.size ?? 0);
-          const bs = b.kind === "directory" ? (folderSizes[b.path] ?? -1) : (b.size ?? 0);
-          return dirMul * (as - bs);
-        }
-        case "modified":
-          return dirMul * ((a.modified ?? 0) - (b.modified ?? 0));
-        case "type":
-          return (
-            dirMul * fileTypeLabel(a.name, a.kind).localeCompare(fileTypeLabel(b.name, b.kind))
-          );
-        case "name":
-        default:
-          return dirMul * a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-      }
-    };
-    return [...filtered].sort(cmp);
-  }, [tab.entries, search, sortCol, sortDir, folderSizes]);
+  // Filter + sort (off main thread for large directories).
+  const { visibleEntries, isSorting } = useSortedEntries(
+    tab.entries,
+    search,
+    sortCol,
+    sortDir,
+    sortCol === "size" ? folderSizes : undefined,
+  );
 
   function toggleSort(col: SortColumn) {
     if (col === sortCol) {
@@ -440,7 +428,7 @@ export function FileBrowser({
   // Drag-and-drop: accept local paths dropped here → upload to current dir.
   const [isDropTarget, setIsDropTarget] = useState(false);
   function handleDragOver(e: React.DragEvent) {
-    const hasLocal = e.dataTransfer.types.includes(HARBOR_LOCAL_MIME);
+    const hasLocal = e.dataTransfer.types.includes(MIME_HARBOR_LOCAL);
     const hasOsFiles = e.dataTransfer.types.includes("Files");
     if (hasLocal || hasOsFiles) {
       e.preventDefault();
@@ -453,7 +441,7 @@ export function FileBrowser({
   }
   function handleDrop(e: React.DragEvent) {
     setIsDropTarget(false);
-    const raw = e.dataTransfer.getData(HARBOR_LOCAL_MIME);
+    const raw = e.dataTransfer.getData(MIME_HARBOR_LOCAL);
     if (raw) {
       e.preventDefault();
       try {
@@ -563,7 +551,7 @@ export function FileBrowser({
               onNavigate(p);
             }}
             onEdit={() => {
-              setPathInput(tab.path);
+              setPathInput(normalizeRemotePath(tab.path));
               setEditingPath(true);
             }}
           />
@@ -616,11 +604,21 @@ export function FileBrowser({
         <button
           onClick={onReload}
           title="Reload"
-          className="text-text-faint transition-colors hover:text-text-secondary"
+          className={`text-text-faint transition-colors hover:text-text-secondary ${tab.refreshStatus === "refreshing" ? "animate-spin" : ""}`}
         >
           <RefreshCw size={13} strokeWidth={2} />
         </button>
       </div>
+
+      {tab.refreshStatus === "refreshing" && (
+        <StaleListingBanner
+          variant={tab.status === "ready" ? "cached" : "loading"}
+          loadedCount={tab.loadedCount}
+          totalCount={tab.totalCount ?? undefined}
+          estimatedLoadMs={tab.estimatedLoadMs ?? undefined}
+          refreshStartedAt={tab.refreshStartedAt ?? undefined}
+        />
+      )}
 
       {/* Column header */}
       <div
@@ -628,9 +626,23 @@ export function FileBrowser({
         style={{ height: "32px", gridTemplateColumns: gridCols }}
       >
         <span />
-        <SortHeader col="name" label="Name" active={sortCol} dir={sortDir} onClick={toggleSort} />
+        <SortHeader
+          col="name"
+          label="Name"
+          active={sortCol}
+          dir={sortDir}
+          onClick={toggleSort}
+          busy={isSorting && sortCol === "name"}
+        />
         {!compact && (
-          <SortHeader col="type" label="Type" active={sortCol} dir={sortDir} onClick={toggleSort} />
+          <SortHeader
+            col="type"
+            label="Type"
+            active={sortCol}
+            dir={sortDir}
+            onClick={toggleSort}
+            busy={isSorting && sortCol === "type"}
+          />
         )}
         <SortHeader
           col="size"
@@ -639,6 +651,7 @@ export function FileBrowser({
           dir={sortDir}
           onClick={toggleSort}
           align="right"
+          busy={isSorting && sortCol === "size"}
         />
         <SortHeader
           col="modified"
@@ -646,20 +659,27 @@ export function FileBrowser({
           active={sortCol}
           dir={sortDir}
           onClick={toggleSort}
+          busy={isSorting && sortCol === "modified"}
         />
         {!compact && <span>Perms</span>}
       </div>
 
       {/* Content */}
       <div
+        ref={scrollRef}
         className="min-h-0 flex-1 overflow-auto"
         onClick={() => {
           onSelectionChange(new Set());
         }}
       >
-        {tab.status === "loading" && (
+        {tab.status === "loading" && tab.entries.length === 0 && (
           <div className="flex h-full items-center justify-center text-[13px] text-text-faint">
             Loading…
+            {tab.loadedCount > 0 && (
+              <span className="ml-2 font-mono text-[11px]">
+                {tab.loadedCount.toLocaleString()} loaded
+              </span>
+            )}
           </div>
         )}
 
@@ -678,7 +698,7 @@ export function FileBrowser({
           </div>
         )}
 
-        {tab.status === "ready" && (
+        {(tab.status === "ready" || (tab.status === "loading" && tab.entries.length > 0)) && (
           <>
             {renameError && (
               <div className="flex items-center justify-between gap-3 border-b border-danger/20 bg-danger/10 px-4 py-2">
@@ -697,7 +717,7 @@ export function FileBrowser({
             {tab.path !== "/" && (
               <div
                 onDoubleClick={() => {
-                  const parent = tab.path.replace(/\/[^/]+\/?$/, "") || "/";
+                  const parent = remotePathParent(tab.path);
                   onSelectionChange(new Set());
                   onNavigate(parent);
                 }}
@@ -718,7 +738,9 @@ export function FileBrowser({
 
             {visibleEntries.length > 0 && (
               <FileList
+                scrollRef={scrollRef}
                 entries={visibleEntries}
+                rowHeight={compact ? BROWSER_ROW_HEIGHT_COMPACT : BROWSER_ROW_HEIGHT}
                 selected={selected}
                 renamingPath={renamingPath}
                 compact={compact}
@@ -764,8 +786,16 @@ export function FileBrowser({
       </div>
 
       {/* Footer — file count + size */}
-      {tab.status === "ready" && (
-        <RemoteFooter entries={tab.entries} filtered={search ? visibleEntries.length : null} />
+      {(tab.status === "ready" || tab.entries.length > 0 || tab.refreshStatus === "refreshing") && (
+        <RemoteFooter
+          entries={tab.entries}
+          filtered={search ? visibleEntries.length : null}
+          refreshStatus={tab.refreshStatus}
+          loadedCount={tab.loadedCount}
+          totalCount={tab.totalCount}
+          streamFolderCount={tab.streamFolderCount}
+          streamFileCount={tab.streamFileCount}
+        />
       )}
 
       {ctxMenu != null && (
@@ -791,20 +821,23 @@ function Breadcrumb({
   onNavigate: (p: string) => void;
   onEdit: () => void;
 }) {
-  const segments = path.split("/").filter(Boolean);
+  const normalized = normalizeRemotePath(path);
+  const segments = splitRemotePath(normalized);
 
   return (
     <div
       onClick={onEdit}
       title="Click to type a path  (⌘L or ⌘G)"
-      className="group flex min-w-0 flex-1 cursor-text items-center gap-[5px] font-mono text-[12px]"
+      className="group flex min-w-0 flex-1 cursor-text items-center gap-0.5 font-mono text-[12px]"
     >
       <button
         onClick={(e) => {
           e.stopPropagation();
           onNavigate("/");
         }}
-        className="flex-shrink-0 text-text-faint transition-colors hover:text-text-secondary"
+        className={`flex-shrink-0 px-0.5 transition-colors hover:text-text-primary ${
+          segments.length === 0 ? "text-text-primary" : "text-text-faint"
+        }`}
       >
         /
       </button>
@@ -812,15 +845,15 @@ function Breadcrumb({
         const segPath = "/" + segments.slice(0, i + 1).join("/");
         const isLast = i === segments.length - 1;
         return (
-          <span key={segPath} className="flex min-w-0 items-center gap-[5px]">
-            <span className="flex-shrink-0 text-text-faint">/</span>
+          <span key={segPath} className="flex min-w-0 items-center">
+            {i > 0 && <span className="flex-shrink-0 px-0.5 text-text-faint">/</span>}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onNavigate(segPath);
               }}
-              className={`truncate transition-colors hover:text-text-primary ${
-                isLast ? "text-text-primary" : "text-text-secondary"
+              className={`truncate px-0.5 transition-colors hover:text-text-primary ${
+                isLast ? "font-medium text-text-primary" : "text-text-secondary"
               }`}
             >
               {seg}
@@ -839,16 +872,44 @@ function Breadcrumb({
 
 // ── Footer ────────────────────────────────────────────────────────────────────
 
-function RemoteFooter({ entries, filtered }: { entries: FileEntry[]; filtered: number | null }) {
-  const folders = entries.filter((e) => e.kind === "directory").length;
-  const files = entries.filter((e) => e.kind !== "directory").length;
+function RemoteFooter({
+  entries,
+  filtered,
+  refreshStatus,
+  loadedCount,
+  totalCount,
+  streamFolderCount = 0,
+  streamFileCount = 0,
+}: {
+  entries: FileEntry[];
+  filtered: number | null;
+  refreshStatus?: "idle" | "refreshing";
+  loadedCount?: number;
+  totalCount?: number | null;
+  streamFolderCount?: number;
+  streamFileCount?: number;
+}) {
+  const cachedFolders = entries.filter((e) => e.kind === "directory").length;
+  const cachedFiles = entries.filter((e) => e.kind !== "directory").length;
+  const useStreamCounts = refreshStatus === "refreshing" && (loadedCount ?? 0) > 0;
+  const folders = useStreamCounts ? streamFolderCount : cachedFolders;
+  const files = useStreamCounts ? streamFileCount : cachedFiles;
   const totalSize = entries.reduce((acc, e) => acc + (e.size ?? 0), 0);
+  const staleNote =
+    refreshStatus === "refreshing"
+      ? totalCount != null && totalCount > 0
+        ? `  |  Not latest · updating ${loadedCount?.toLocaleString() ?? "0"} / ${totalCount.toLocaleString()}`
+        : loadedCount != null && loadedCount > 0
+          ? `  |  Not latest · updating ${loadedCount.toLocaleString()} loaded`
+          : "  |  Not latest"
+      : "";
   return (
     <div className="flex h-8 flex-none items-center border-t border-border-raised bg-surface-colheader px-3.5">
       <span className="font-mono text-[10.5px] text-text-tertiary">
         {folders} folder{folders !== 1 ? "s" : ""}, {files} file{files !== 1 ? "s" : ""}
         {totalSize > 0 ? `  |  ${formatSize(totalSize)}` : ""}
         {filtered !== null ? `  |  ${filtered.toString()} shown` : ""}
+        {staleNote}
       </span>
     </div>
   );
@@ -857,7 +918,9 @@ function RemoteFooter({ entries, filtered }: { entries: FileEntry[]; filtered: n
 // ── File list ─────────────────────────────────────────────────────────────────
 
 function FileList({
+  scrollRef,
   entries,
+  rowHeight,
   selected,
   renamingPath,
   compact,
@@ -869,7 +932,9 @@ function FileList({
   onRowContextMenu,
   onRenameCommit,
 }: {
+  scrollRef: React.RefObject<HTMLDivElement | null>;
   entries: FileEntry[];
+  rowHeight: number;
   selected: Set<string>;
   renamingPath: string | null;
   compact: boolean;
@@ -881,37 +946,64 @@ function FileList({
   onRowContextMenu: (e: React.MouseEvent, entry: FileEntry) => void;
   onRenameCommit: (oldPath: string, newName: string) => void;
 }) {
+  const virtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 15,
+  });
+
   return (
-    <div>
-      {entries.map((entry, idx) => (
-        <FileRow
-          key={entry.path}
-          entry={entry}
-          idx={idx}
-          isSelected={selected.has(entry.path)}
-          isRenaming={renamingPath === entry.path}
-          compact={compact}
-          gridCols={gridCols}
-          folderSize={entry.kind === "directory" ? folderSizes[entry.path] : undefined}
-          folderSizeLoading={
-            entry.kind === "directory" ? loadingFolderSizes.has(entry.path) : false
-          }
-          onClick={onRowClick}
-          onDoubleClick={onRowDoubleClick}
-          onContextMenu={onRowContextMenu}
-          onRenameCommit={onRenameCommit}
-          onDragStart={(e) => {
-            const paths = selected.has(entry.path) ? Array.from(selected) : [entry.path];
-            e.dataTransfer.setData(HARBOR_REMOTE_MIME, JSON.stringify(paths));
-            e.dataTransfer.effectAllowed = "copy";
-          }}
-        />
-      ))}
+    <div
+      style={{
+        height: `${virtualizer.getTotalSize().toString()}px`,
+        width: "100%",
+        position: "relative",
+      }}
+    >
+      {virtualizer.getVirtualItems().map((vRow) => {
+        const entry = entries[vRow.index];
+        return (
+          <div
+            key={entry.path}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: `${vRow.size.toString()}px`,
+              transform: `translateY(${vRow.start.toString()}px)`,
+            }}
+          >
+            <FileRow
+              entry={entry}
+              idx={vRow.index}
+              isSelected={selected.has(entry.path)}
+              isRenaming={renamingPath === entry.path}
+              compact={compact}
+              gridCols={gridCols}
+              folderSize={entry.kind === "directory" ? folderSizes[entry.path] : undefined}
+              folderSizeLoading={
+                entry.kind === "directory" ? loadingFolderSizes.has(entry.path) : false
+              }
+              onClick={onRowClick}
+              onDoubleClick={onRowDoubleClick}
+              onContextMenu={onRowContextMenu}
+              onRenameCommit={onRenameCommit}
+              onDragStart={(e) => {
+                const paths = selected.has(entry.path) ? Array.from(selected) : [entry.path];
+                e.dataTransfer.setData(MIME_HARBOR_REMOTE, JSON.stringify(paths));
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function FileRow({
+const FileRow = memo(function FileRow({
   entry,
   idx,
   isSelected,
@@ -1043,7 +1135,7 @@ function FileRow({
       )}
     </div>
   );
-}
+});
 
 // ── Sortable column header ────────────────────────────────────────────────────
 
@@ -1054,6 +1146,7 @@ function SortHeader({
   dir,
   onClick,
   align,
+  busy,
 }: {
   col: SortColumn;
   label: string;
@@ -1061,6 +1154,7 @@ function SortHeader({
   dir: SortDir;
   onClick: (col: SortColumn) => void;
   align?: "left" | "right";
+  busy?: boolean;
 }) {
   const isActive = active === col;
   return (
@@ -1073,7 +1167,11 @@ function SortHeader({
       } ${isActive ? "text-text-primary" : ""}`}
     >
       {label}
+      {busy && isActive && (
+        <RefreshCw size={9} strokeWidth={2.4} className="animate-spin opacity-60" />
+      )}
       {isActive &&
+        !busy &&
         (dir === "asc" ? (
           <ChevronUp size={10} strokeWidth={2.4} />
         ) : (

@@ -32,15 +32,14 @@ import {
 import { buildSystemPrompt } from "../context/pagePrompt";
 import type { PageContextValue } from "../context/PageContext";
 import type { ChatMessage, ChatToolCall } from "./useChatSession";
+import {
+  OLLAMA_BASE_URL,
+  AI_MAX_ITERATIONS,
+  AI_TOOL_TIMEOUT_MS,
+  AI_ROLLING_WINDOW,
+} from "../config";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const OLLAMA_BASE = "http://localhost:11434";
-const MAX_ITERATIONS = 8;
-const TOOL_TIMEOUT_MS = 30_000;
-const AGENT_ROLLING_WINDOW = 10;
-
-// ── Tool schemas advertised to the LLM ────────────────────────────────────────
+// ── Tool schemas advertised to the LLM ───────────────────────────────────────
 
 interface ToolSchema {
   type: "function";
@@ -163,7 +162,6 @@ export const AGENT_TOOL_SCHEMAS: ToolSchema[] = [
 ];
 
 // Read-only mode: no write tools are advertised or executable.
-const WRITE_TOOL_NAMES = new Set<string>();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -301,7 +299,7 @@ export function useAgentLoop(params: UseAgentLoopParams) {
         `- Never propose destructive commands, even in text. If the user asks to "restart / delete / install / modify", tell them the exact command they would need to run themselves and explain what it does — do not run it.`;
 
       // Build initial conversation.
-      const prior = params.priorMessages.slice(-AGENT_ROLLING_WINDOW);
+      const prior = params.priorMessages.slice(-AI_ROLLING_WINDOW);
       const conversation: OllamaConversationMessage[] = [
         { role: "system", content: baseSystemPrompt },
         ...prior
@@ -326,16 +324,16 @@ export function useAgentLoop(params: UseAgentLoopParams) {
 
       try {
         for (;;) {
-          if (iterationCount >= MAX_ITERATIONS) {
+          if (iterationCount >= AI_MAX_ITERATIONS) {
             finalContent +=
               (finalContent ? "\n\n" : "") +
-              `⚠ Hit the ${String(MAX_ITERATIONS)}-iteration cap. Here is what I found so far.`;
+              `⚠ Hit the ${String(AI_MAX_ITERATIONS)}-iteration cap. Here is what I found so far.`;
             break;
           }
           iterationCount += 1;
 
           // Call Ollama with tools.
-          const res = await fetch(`${OLLAMA_BASE}/api/chat`, {
+          const res = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -404,53 +402,8 @@ export function useAgentLoop(params: UseAgentLoopParams) {
             }
             seenCalls.set(callKey, seenTimes + 1);
 
-            // Write tools require approval BEFORE we invoke Rust.
-            let effectiveCmd: string | undefined;
-            let approvalState = "auto";
-            if (WRITE_TOOL_NAMES.has(name)) {
-              const proposedCmd = argStr(args.cmd);
-              const rationale = argStr(args.rationale);
-              const decision = await requestApproval(
-                setPendingApproval,
-                pendingApprovalRef,
-                toolCallId,
-                proposedCmd,
-                rationale,
-              );
-              if (decision.kind === "deny") {
-                const result: AgentToolResult = {
-                  ok: false,
-                  output: "",
-                  truncated: false,
-                  duration_ms: 0,
-                  error: decision.reason ?? "denied by user",
-                  suggest_write: false,
-                };
-                approvalState = "denied";
-                turnToolCalls.push({ name, args: { cmd: proposedCmd }, result });
-                await params.saveToolCall({
-                  id: newId("tc-"),
-                  session_id: session.id,
-                  message_id: messageId,
-                  tool_name: name,
-                  args_json: JSON.stringify({ cmd: proposedCmd }),
-                  result_json: JSON.stringify(result),
-                  result_truncated: 0,
-                  approval_state: approvalState,
-                  duration_ms: 0,
-                  invoked_at: Date.now(),
-                });
-                conversation.push({
-                  role: "tool",
-                  tool_call_id: toolCallId,
-                  name,
-                  content: JSON.stringify(result),
-                });
-                continue;
-              }
-              effectiveCmd = decision.cmd;
-              approvalState = decision.kind === "modify" ? "modified" : "approved";
-            }
+            const effectiveCmd: string | undefined = undefined;
+            const approvalState = "auto";
 
             // Actually invoke the tool.
             const started = Date.now();
@@ -472,7 +425,7 @@ export function useAgentLoop(params: UseAgentLoopParams) {
 
             let result: AgentToolResult;
             try {
-              result = await withTimeout(invokeAgentTool(name, liveArgs), TOOL_TIMEOUT_MS);
+              result = await withTimeout(invokeAgentTool(name, liveArgs), AI_TOOL_TIMEOUT_MS);
             } catch (e) {
               result = {
                 ok: false,
@@ -625,23 +578,6 @@ function argNum(v: unknown): number | undefined {
     return Number.isFinite(n) ? n : undefined;
   }
   return undefined;
-}
-
-interface MutableRef<T> {
-  current: T;
-}
-async function requestApproval(
-  setState: (a: PendingApproval | null) => void,
-  ref: MutableRef<PendingApproval | null>,
-  toolCallId: string,
-  cmd: string,
-  rationale: string,
-): Promise<ApprovalDecision> {
-  return new Promise<ApprovalDecision>((resolve) => {
-    const pending: PendingApproval = { toolCallId, cmd, rationale, resolve };
-    ref.current = pending;
-    setState(pending);
-  });
 }
 
 /** Compact, glanceable summary of tool args for the live row (e.g. `name="db-1"`). */

@@ -3,6 +3,10 @@ use std::sync::Arc;
 
 use tauri::Emitter;
 
+use crate::config::{
+    PTY_INITIAL_COLS, PTY_INITIAL_ROWS, PTY_READ_BUF_SIZE, PTY_TERM_TYPE,
+    TERMINAL_IDLE_MAX_BACKOFF_MS, TERMINAL_STARTUP_DELAY_MS,
+};
 use crate::models::{AppError, AuthMethod, StoredCreds};
 use crate::ssh::{SshState, TerminalCmd};
 
@@ -77,7 +81,7 @@ pub async fn open_terminal(
                 return;
             }
         };
-        if let Err(e) = channel.request_pty("xterm-256color", None, Some((120, 40, 0, 0))) {
+        if let Err(e) = channel.request_pty(PTY_TERM_TYPE, None, Some((PTY_INITIAL_COLS, PTY_INITIAL_ROWS, 0, 0))) {
             let _ = ready_tx.send(Err(AppError::internal(format!("pty: {e}"))));
             return;
         }
@@ -106,53 +110,28 @@ pub async fn open_terminal(
         // `terminal-data` listener before we start emitting. Without this,
         // the shell's initial MOTD / PS1 output would be dropped because no
         // one is listening yet.
-        std::thread::sleep(std::time::Duration::from_millis(250));
+        std::thread::sleep(std::time::Duration::from_millis(TERMINAL_STARTUP_DELAY_MS));
 
-        // Inject Harbor shell integration (silent — echo disabled during setup).
-        // Defines __hb_pre / __hb_pst hooks for bash and zsh that emit OSC 9001
-        // markers the frontend parses to capture every command + its output.
+        // Harbor shell integration — fire-and-forget. Never use `stty -echo`
+        // here: if echo is not restored the user cannot see keystrokes. Setup
+        // lines are stripped on the frontend (`stripHarborSetupNoise`).
         {
             use std::io::Write as _;
-            let _ = channel.write_all(b"stty -echo 2>/dev/null\n");
-            std::thread::sleep(std::time::Duration::from_millis(80));
-            // Single-line script — raw string avoids Rust escape ambiguity.
-            // The \e and \a inside are literal two-char sequences that the
-            // remote shell's printf will expand to ESC and BEL respectively.
-            // zsh: preexec / precmd hooks (native).
-            // bash: DEBUG trap fires once per user command (flag-guarded to
-            //       skip sub-commands and PROMPT_COMMAND internals).
-            let script = "__hb_pre(){ __hb_t=$(date +%s%3N);printf '\\e]9001;start;cmd=%s;cwd=%s\\a' \"$(printf '%s' \"$1\"|base64 2>/dev/null|tr -d '\\n')\" \"$(printf '%s' \"$PWD\"|base64 2>/dev/null|tr -d '\\n')\"; };__hb_pst(){ local r=$?;printf '\\e]9001;end;exit=%d;dur=%d\\a' \"$r\" \"$(($(date +%s%3N)-${__hb_t:-0}))\"; };if [ -n \"$ZSH_VERSION\" ];then autoload -U add-zsh-hook 2>/dev/null;add-zsh-hook preexec __hb_pre 2>/dev/null;add-zsh-hook precmd __hb_pst 2>/dev/null;elif [ -n \"$BASH_VERSION\" ];then __hb_trap(){ local c=\"$BASH_COMMAND\";[ -n \"$__hb_ran\" ]&&return;[ \"$c\" = \"__hb_pst\" ]&&return;__hb_ran=1;__hb_pre \"$c\"; };trap '__hb_trap' DEBUG;PROMPT_COMMAND=\"unset __hb_ran;__hb_pst${PROMPT_COMMAND:+;$PROMPT_COMMAND}\";fi\n";
+            let script = "__hb_setup=1; __hb_pre(){ __hb_t=$(date +%s%3N);printf '\\e]9001;start;cmd=%s;cwd=%s\\a' \"$(printf '%s' \"$1\"|base64 2>/dev/null|tr -d '\\n')\" \"$(printf '%s' \"$PWD\"|base64 2>/dev/null|tr -d '\\n')\"; };__hb_pst(){ local r=$?;printf '\\e]9001;end;exit=%d;dur=%d\\a' \"$r\" \"$(($(date +%s%3N)-${__hb_t:-0}))\"; };if [ -n \"$ZSH_VERSION\" ];then autoload -U add-zsh-hook 2>/dev/null;add-zsh-hook preexec __hb_pre 2>/dev/null;add-zsh-hook precmd __hb_pst 2>/dev/null;elif [ -n \"$BASH_VERSION\" ];then __hb_trap(){ local c=\"$BASH_COMMAND\";[ -n \"${__hb_setup:-}\" ]&&return;[ -n \"$__hb_ran\" ]&&return;[ \"$c\" = \"__hb_pst\" ]&&return;__hb_ran=1;__hb_pre \"$c\"; };trap '__hb_trap' DEBUG;PROMPT_COMMAND=\"unset __hb_ran;__hb_pst${PROMPT_COMMAND:+;$PROMPT_COMMAND}\";fi; unset __hb_setup\n";
             let _ = channel.write_all(script.as_bytes());
-            std::thread::sleep(std::time::Duration::from_millis(80));
-            let _ = channel.write_all(b"stty echo 2>/dev/null\n");
-            std::thread::sleep(std::time::Duration::from_millis(80));
+            let _ = channel.flush();
         }
 
-        // Switch to non-blocking so we can drain setup artifacts first.
+        // Non-blocking for the main read/write loop — all PTY output (MOTD,
+        // prompt, setup echo) flows straight to the UI.
         bundle.session.set_blocking(false);
 
-        // Drain and discard all PTY output buffered during setup. The 'stty -echo'
-        // command is itself echoed by the PTY (because echo was still on when it was
-        // sent), so without this drain it would appear verbatim in the terminal.
-        {
-            use std::io::Read as _;
-            std::thread::sleep(std::time::Duration::from_millis(60));
-            let mut drain = [0u8; 8192];
-            loop {
-                match channel.read(&mut drain) {
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {}
-                }
-            }
-            // Trigger a fresh shell prompt so the user starts with a clean terminal.
-            let _ = channel.write_all(b"\n");
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-
         // ── Read/write loop ────────────────────────────────────────────────────
-        let mut read_buf = [0u8; 4096];
+        let mut read_buf = [0u8; PTY_READ_BUF_SIZE];
+        let mut idle_backoff_ms = 1u64;
         loop {
+            let mut did_work = false;
+
             // Read from SSH channel → emit event to frontend.
             match channel.read(&mut read_buf) {
                 Ok(0) => {
@@ -169,6 +148,8 @@ pub async fn open_terminal(
                             data,
                         },
                     );
+                    did_work = true;
+                    idle_backoff_ms = 1;
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(_) => break,
@@ -199,16 +180,23 @@ pub async fn open_terminal(
                             Err(_) => break, // channel died — leave the read loop's error path to notice
                         }
                     }
+                    did_work = true;
+                    idle_backoff_ms = 1;
                 }
                 Ok(TerminalCmd::Resize { cols, rows }) => {
                     let _ = channel.request_pty_size(cols, rows, None, None);
+                    did_work = true;
+                    idle_backoff_ms = 1;
                 }
                 Ok(TerminalCmd::Close) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            if !did_work {
+                std::thread::sleep(std::time::Duration::from_millis(idle_backoff_ms));
+                idle_backoff_ms = (idle_backoff_ms * 2).min(TERMINAL_IDLE_MAX_BACKOFF_MS);
+            }
         }
 
         // Cleanup
