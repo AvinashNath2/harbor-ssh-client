@@ -181,6 +181,10 @@ pub struct ConnectionProfile {
     pub folder: Option<String>,
     pub favorite: Option<bool>,
     pub last_connected: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saved_password: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saved_key_passphrase: Option<String>,
 }
 
 // ── Filesystem types (Phase 2) ────────────────────────────────────────────────
@@ -215,6 +219,25 @@ pub struct FileEntry {
     pub permissions: Option<String>,
     /// Unix timestamp (seconds since epoch). Sent as-is; JS converts to a date.
     pub modified: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct FolderListChunk {
+    pub list_id: String,
+    pub entries: Vec<FileEntry>,
+    pub offset: usize,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct FolderListDone {
+    pub list_id: String,
+    pub total: usize,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct FolderListError {
+    pub list_id: String,
+    pub message: String,
 }
 
 /// Format Unix permission bits as a ls-style string, e.g. `drwxr-xr-x`.
