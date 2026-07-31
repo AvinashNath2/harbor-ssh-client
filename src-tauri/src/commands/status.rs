@@ -31,17 +31,19 @@ pub fn connection_status(state: tauri::State<'_, SshState>) -> Result<Connection
 pub async fn ping_connection(state: tauri::State<'_, SshState>) -> Result<(), AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
-        let sftp = bundle
-            .session
-            .sftp()
-            .map_err(|e| AppError::connection_failed(format!("SFTP down: {e}")))?;
-        sftp.stat(std::path::Path::new("/"))
-            .map(|_| ())
-            .map_err(|e| AppError::connection_failed(format!("Ping failed: {e}")))
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
+        bundle.path_exists("/").and_then(|ok| {
+            if ok {
+                Ok(())
+            } else {
+                Err(AppError::connection_failed(
+                    "Ping failed: / not accessible".to_string(),
+                ))
+            }
+        })
     })
     .await
     .map_err(|e| AppError::internal(format!("Task join error: {e}")))?

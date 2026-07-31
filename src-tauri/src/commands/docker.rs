@@ -172,14 +172,8 @@ pub async fn list_docker_containers(
             .filter(|l| !l.trim().is_empty())
             .filter_map(|l| serde_json::from_str::<DockerContainer>(l).ok())
             .map(|c| DockerContainerParsed {
-                compose_project: extract_label(
-                    &c.labels,
-                    "com.docker.compose.project",
-                ),
-                compose_service: extract_label(
-                    &c.labels,
-                    "com.docker.compose.service",
-                ),
+                compose_project: extract_label(&c.labels, "com.docker.compose.project"),
+                compose_service: extract_label(&c.labels, "com.docker.compose.service"),
                 id: c.id,
                 name: c.name,
                 image: c.image,
@@ -272,10 +266,8 @@ pub async fn list_compose_projects(
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
         let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
-        let output = bundle
-            .exec("docker compose ls --format json 2>/dev/null || echo '[]'")?;
-        let items: Vec<ComposeProject> =
-            serde_json::from_str(&output).unwrap_or_default();
+        let output = bundle.exec("docker compose ls --format json 2>/dev/null || echo '[]'")?;
+        let items: Vec<ComposeProject> = serde_json::from_str(&output).unwrap_or_default();
         Ok(items)
     })
     .await
@@ -436,4 +428,3 @@ pub async fn docker_all_mounts(
     .await
     .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
 }
-

@@ -2,9 +2,14 @@ import { AlertTriangle, Check, ChevronDown, FolderOpen, Key, Plus, X } from "luc
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
 import { testConnection, type ConnectArgs, type ConnectionProfile } from "../api";
+import type { ConnectCredentialOptions } from "../utils/profileCredentials";
 
 interface NewSessionModalProps {
-  onConnect: (args: ConnectArgs, profile: ConnectionProfile | null) => void;
+  onConnect: (
+    args: ConnectArgs,
+    profile: ConnectionProfile | null,
+    creds?: ConnectCredentialOptions,
+  ) => void;
   onSave: (profile: ConnectionProfile) => Promise<void> | void;
   onClose: () => void;
   isLoading: boolean;
@@ -33,9 +38,11 @@ export function NewSessionModal({
   const [port, setPort] = useState(initialProfile?.port.toString() ?? "22");
   const [username, setUsername] = useState(initialProfile?.username ?? "");
   const [authMode, setAuthMode] = useState<AuthMode>(initialProfile?.authType ?? "password");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState(initialProfile?.savedPassword ?? "");
   const [keyPath, setKeyPath] = useState(initialProfile?.keyPath ?? "~/.ssh/id_rsa");
-  const [passphrase, setPassphrase] = useState("");
+  const [passphrase, setPassphrase] = useState(initialProfile?.savedKeyPassphrase ?? "");
+  const [dontSavePassword, setDontSavePassword] = useState(false);
+  const [dontSavePassphrase, setDontSavePassphrase] = useState(false);
   const [saveToFolder, setSaveToFolder] = useState(initialProfile?.folder ?? initialFolder ?? "");
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -81,7 +88,7 @@ export function NewSessionModal({
 
   function buildProfile(): ConnectionProfile | null {
     if (!willSave || !host.trim()) return null;
-    return {
+    const profile: ConnectionProfile = {
       id: initialProfile?.id ?? crypto.randomUUID(),
       name: sessionName.trim() || host.trim(),
       host: host.trim(),
@@ -93,11 +100,33 @@ export function NewSessionModal({
       favorite: initialProfile?.favorite,
       lastConnected: initialProfile?.lastConnected,
     };
+    if (authMode === "password" && !dontSavePassword && password) {
+      profile.savedPassword = password;
+    } else if (authMode === "password" && dontSavePassword) {
+      delete profile.savedPassword;
+    }
+    if (authMode === "publicKey" && !dontSavePassphrase && passphrase) {
+      profile.savedKeyPassphrase = passphrase;
+    } else if (authMode === "publicKey" && dontSavePassphrase) {
+      delete profile.savedKeyPassphrase;
+    }
+    return profile;
+  }
+
+  function buildCredentialOptions(): ConnectCredentialOptions | undefined {
+    if (!willSave) return undefined;
+    if (authMode === "password") {
+      return { password, savePassword: !dontSavePassword };
+    }
+    if (passphrase) {
+      return { keyPassphrase: passphrase, saveKeyPassphrase: !dontSavePassphrase };
+    }
+    return dontSavePassphrase ? { saveKeyPassphrase: false } : undefined;
   }
 
   function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
-    onConnect(buildConnectArgs(), buildProfile());
+    onConnect(buildConnectArgs(), buildProfile(), buildCredentialOptions());
   }
 
   async function handleSaveOnly() {
@@ -296,6 +325,19 @@ export function NewSessionModal({
                   required
                   className={fieldClass}
                 />
+                {willSave && (
+                  <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11.5px] text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={dontSavePassword}
+                      onChange={(e) => {
+                        setDontSavePassword(e.target.checked);
+                      }}
+                      className="h-3 w-3 accent-accent-dark"
+                    />
+                    Don&apos;t save password
+                  </label>
+                )}
               </div>
             ) : (
               <div>
@@ -340,6 +382,19 @@ export function NewSessionModal({
                     placeholder="leave blank if none"
                     className={fieldClass}
                   />
+                  {willSave && passphrase && (
+                    <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11.5px] text-text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={dontSavePassphrase}
+                        onChange={(e) => {
+                          setDontSavePassphrase(e.target.checked);
+                        }}
+                        className="h-3 w-3 accent-accent-dark"
+                      />
+                      Don&apos;t save passphrase
+                    </label>
+                  )}
                 </div>
               </div>
             )}

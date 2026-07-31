@@ -42,6 +42,8 @@ pub struct SessionBundle {
     username: String,
     pub ip_addr: String,
     _stream: TcpStream,
+    /// Cached SFTP handle — avoids re-initializing the SFTP subsystem on every call.
+    sftp: Option<ssh2::Sftp>,
 }
 
 impl SessionBundle {
@@ -121,7 +123,40 @@ impl SessionBundle {
             username: username.to_owned(),
             ip_addr,
             _stream: stream_clone,
+            sftp: None,
         })
+    }
+
+    fn get_sftp(&mut self) -> Result<&ssh2::Sftp, AppError> {
+        if self.sftp.is_none() {
+            self.sftp = Some(
+                self.session
+                    .sftp()
+                    .map_err(|e| AppError::internal(format!("SFTP subsystem failed: {e}")))?,
+            );
+        }
+        Ok(self.sftp.as_ref().unwrap())
+    }
+
+    /// Cheap existence check via SFTP stat — used by path-bar validation instead
+    /// of listing an entire directory.
+    pub fn path_exists(&mut self, path: &str) -> Result<bool, AppError> {
+        let sftp = self.get_sftp()?;
+        let expanded = shellexpand::tilde(path).into_owned().replace('\\', "/");
+        match sftp.stat(Path::new(&expanded)) {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                let msg = e.message().to_lowercase();
+                if msg.contains("no such file") || msg.contains("not found") {
+                    Ok(false)
+                } else {
+                    Err(AppError::internal(format!(
+                        "Cannot stat {path}: {}",
+                        e.message()
+                    )))
+                }
+            }
+        }
     }
 
     pub fn exec(&self, command: &str) -> Result<String, AppError> {
@@ -163,13 +198,10 @@ impl SessionBundle {
         let _ = self.session.disconnect(None, "User disconnected", None);
     }
 
-    pub fn list_dir(&self, path: &str) -> Result<Vec<FileEntry>, AppError> {
-        let sftp = self
-            .session
-            .sftp()
-            .map_err(|e| AppError::internal(format!("SFTP subsystem failed: {e}")))?;
+    pub fn list_dir(&mut self, path: &str) -> Result<Vec<FileEntry>, AppError> {
+        let sftp = self.get_sftp()?;
 
-        let expanded = shellexpand::tilde(path).into_owned();
+        let expanded = shellexpand::tilde(path).into_owned().replace('\\', "/");
 
         let raw = sftp.readdir(std::path::Path::new(&expanded)).map_err(|e| {
             let msg = e.message().to_owned();
@@ -189,7 +221,7 @@ impl SessionBundle {
                 }
                 Some(FileEntry {
                     name,
-                    path: entry_path.to_string_lossy().to_string(),
+                    path: entry_path.to_string_lossy().replace('\\', "/"),
                     kind: FileKind::from_perm(stat.perm),
                     size: stat.size,
                     permissions: stat.perm.map(format_permissions),
@@ -210,20 +242,92 @@ impl SessionBundle {
         Ok(entries)
     }
 
-    pub fn create_dir(&self, path: &str) -> Result<(), AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+    /// Read a directory incrementally via SFTP opendir/readdir. Checks
+    /// `is_cancelled` before each entry so navigation can abandon in-flight
+    /// listings without waiting for the full directory read.
+    pub fn list_dir_stream<C, F>(
+        &mut self,
+        path: &str,
+        chunk_size: usize,
+        mut is_cancelled: F,
+        mut emit: C,
+    ) -> Result<usize, AppError>
+    where
+        C: FnMut(Vec<FileEntry>, usize),
+        F: FnMut() -> bool,
+    {
+        let sftp = self.get_sftp()?;
+        let expanded = shellexpand::tilde(path).into_owned().replace('\\', "/");
+        let dir_path = Path::new(&expanded);
+
+        let mut dir = sftp
+            .opendir(dir_path)
+            .map_err(|e| map_list_dir_error(e, path))?;
+
+        let mut batch: Vec<FileEntry> = Vec::with_capacity(chunk_size);
+        let mut offset = 0usize;
+        let mut total = 0usize;
+
+        loop {
+            if is_cancelled() {
+                return Ok(total);
+            }
+
+            match dir.readdir() {
+                Ok((filename, stat)) => {
+                    let name = filename.to_string_lossy().to_string();
+                    if name == "." || name == ".." {
+                        continue;
+                    }
+
+                    batch.push(FileEntry {
+                        name,
+                        path: dir_path
+                            .join(&filename)
+                            .to_string_lossy()
+                            .replace('\\', "/"),
+                        kind: FileKind::from_perm(stat.perm),
+                        size: stat.size,
+                        permissions: stat.perm.map(format_permissions),
+                        modified: stat.mtime,
+                    });
+
+                    if batch.len() >= chunk_size {
+                        let len = batch.len();
+                        emit(batch, offset);
+                        offset += len;
+                        total += len;
+                        batch = Vec::with_capacity(chunk_size);
+                    }
+                }
+                Err(e) if is_readdir_eof(&e) => break,
+                Err(e) => return Err(map_list_dir_error(e, path)),
+            }
+        }
+
+        if !batch.is_empty() {
+            let len = batch.len();
+            emit(batch, offset);
+            total += len;
+        }
+
+        Ok(total)
+    }
+
+    pub fn create_dir(&mut self, path: &str) -> Result<(), AppError> {
+        let sftp = self.get_sftp()?;
         sftp.mkdir(Path::new(path), 0o755).map_err(AppError::from)
     }
 
-    pub fn rename_entry(&self, old_path: &str, new_path: &str) -> Result<(), AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+    pub fn rename_entry(&mut self, old_path: &str, new_path: &str) -> Result<(), AppError> {
+        let sftp = self.get_sftp()?;
         sftp.rename(Path::new(old_path), Path::new(new_path), None)
             .map_err(AppError::from)
     }
 
-    pub fn delete_entry(&self, path: &str) -> Result<(), AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
-        sftp_delete_recursive(&sftp, Path::new(path))
+    pub fn delete_entry(&mut self, path: &str) -> Result<(), AppError> {
+        let sftp = self.get_sftp()?;
+        sftp_delete_recursive(sftp, Path::new(path))
     }
 
     /// Recursively sum the sizes of every file under `path`. Symlinks are
@@ -231,13 +335,13 @@ impl SessionBundle {
     /// individual subdirectories don't abort the whole walk — they're just
     /// skipped, since a real user with mixed permissions still expects a
     /// best-effort total.
-    pub fn compute_folder_size(&self, path: &str) -> Result<u64, AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
-        Ok(sftp_folder_size(&sftp, Path::new(path)))
+    pub fn compute_folder_size(&mut self, path: &str) -> Result<u64, AppError> {
+        let sftp = self.get_sftp()?;
+        Ok(sftp_folder_size(sftp, Path::new(path)))
     }
 
-    pub fn download(&self, remote_path: &str, local_path: &str) -> Result<u64, AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+    pub fn download(&mut self, remote_path: &str, local_path: &str) -> Result<u64, AppError> {
+        let sftp = self.get_sftp()?;
         let mut src = sftp.open(Path::new(remote_path)).map_err(AppError::from)?;
         let mut dst = std::fs::File::create(local_path)
             .map_err(|e| AppError::internal(format!("Cannot create file: {e}")))?;
@@ -245,8 +349,8 @@ impl SessionBundle {
             .map_err(|e| AppError::internal(format!("Download failed: {e}")))
     }
 
-    pub fn upload(&self, local_path: &str, remote_path: &str) -> Result<u64, AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+    pub fn upload(&mut self, local_path: &str, remote_path: &str) -> Result<u64, AppError> {
+        let sftp = self.get_sftp()?;
         let mut src = std::fs::File::open(local_path)
             .map_err(|e| AppError::internal(format!("Cannot open file: {e}")))?;
         let mut dst = sftp
@@ -261,14 +365,14 @@ impl SessionBundle {
 
     /// Download with chunked progress events. Used by Phase 6 queued transfers.
     pub fn download_with_progress(
-        &self,
+        &mut self,
         remote_path: &str,
         local_path: &str,
         cancelled: &Arc<Mutex<HashSet<String>>>,
         transfer_id: &str,
         mut on_progress: impl FnMut(u64, u64),
     ) -> Result<u64, AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+        let sftp = self.get_sftp()?;
         let stat = sftp.stat(Path::new(remote_path)).map_err(AppError::from)?;
         let total = stat.size.unwrap_or(0);
 
@@ -307,7 +411,7 @@ impl SessionBundle {
 
     /// Upload with chunked progress events.
     pub fn upload_with_progress(
-        &self,
+        &mut self,
         local_path: &str,
         remote_path: &str,
         cancelled: &Arc<Mutex<HashSet<String>>>,
@@ -316,7 +420,7 @@ impl SessionBundle {
     ) -> Result<u64, AppError> {
         let total = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
 
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+        let sftp = self.get_sftp()?;
         let mut src = std::fs::File::open(local_path)
             .map_err(|e| AppError::internal(format!("Cannot open file: {e}")))?;
         let mut dst = sftp
@@ -384,9 +488,9 @@ impl SessionBundle {
         Ok((bundle, result))
     }
 
-    pub fn get_file_info(&self, path: &str) -> Result<crate::models::FileInfo, AppError> {
+    pub fn get_file_info(&mut self, path: &str) -> Result<crate::models::FileInfo, AppError> {
         use crate::models::FileInfo;
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+        let sftp = self.get_sftp()?;
         let stat = sftp.lstat(Path::new(path)).map_err(AppError::from)?;
 
         let perm_str = stat.perm.map(format_permissions);
@@ -438,8 +542,8 @@ impl SessionBundle {
         })
     }
 
-    pub fn chmod_file(&self, path: &str, perm_bits: u32) -> Result<(), AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+    pub fn chmod_file(&mut self, path: &str, perm_bits: u32) -> Result<(), AppError> {
+        let sftp = self.get_sftp()?;
         let current = sftp.lstat(Path::new(path)).map_err(AppError::from)?;
         let new_perm = (current.perm.unwrap_or(0) & 0o170000) | (perm_bits & 0o7777);
         sftp.setstat(
@@ -456,8 +560,8 @@ impl SessionBundle {
         .map_err(AppError::from)
     }
 
-    pub fn read_file_preview(&self, path: &str, max_bytes: usize) -> Result<String, AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+    pub fn read_file_preview(&mut self, path: &str, max_bytes: usize) -> Result<String, AppError> {
+        let sftp = self.get_sftp()?;
         let mut file = sftp.open(Path::new(path)).map_err(AppError::from)?;
         let cap = max_bytes.min(131_072);
         let mut buf = vec![0u8; cap];
@@ -468,8 +572,8 @@ impl SessionBundle {
 
     /// Overwrite a remote file with the given UTF-8 text. SFTP `create` opens
     /// the file with O_WRONLY|O_CREAT|O_TRUNC so previous contents are wiped.
-    pub fn write_file_text(&self, path: &str, content: &str) -> Result<(), AppError> {
-        let sftp = self.session.sftp().map_err(AppError::from)?;
+    pub fn write_file_text(&mut self, path: &str, content: &str) -> Result<(), AppError> {
+        let sftp = self.get_sftp()?;
         let mut file = sftp.create(Path::new(path)).map_err(AppError::from)?;
         Write::write_all(&mut file, content.as_bytes())
             .map_err(|e| AppError::internal(format!("Write failed: {e}")))?;
@@ -523,6 +627,20 @@ pub(crate) fn base64_encode(bytes: &[u8]) -> String {
         });
     }
     out
+}
+
+fn is_readdir_eof(e: &ssh2::Error) -> bool {
+    // LIBSSH2_ERROR_FILE (-16) — end of directory listing (ssh2 File::readdir).
+    matches!(e.code(), ssh2::ErrorCode::Session(-16)) || e.message() == "no more files"
+}
+
+fn map_list_dir_error(e: ssh2::Error, path: &str) -> AppError {
+    let msg = e.message().to_owned();
+    if msg.to_lowercase().contains("permission") {
+        AppError::permission_denied(format!("Permission denied: {path}"))
+    } else {
+        AppError::internal(format!("Cannot list {path}: {msg}"))
+    }
 }
 
 fn sftp_delete_recursive(sftp: &ssh2::Sftp, path: &Path) -> Result<(), AppError> {
@@ -585,6 +703,8 @@ pub struct SshState {
     pub terminals: Arc<Mutex<HashMap<String, TerminalHandle>>>,
     /// Transfer IDs that have been cancelled by the user.
     pub cancelled_transfers: Arc<Mutex<HashSet<String>>>,
+    /// Directory listing stream IDs cancelled by navigation or reload.
+    pub cancelled_lists: Arc<Mutex<HashSet<String>>>,
     /// Active port forward listeners indexed by forward_id.
     pub port_forwards: Arc<Mutex<HashMap<String, PortForwardHandle>>>,
 }
@@ -596,6 +716,7 @@ impl SshState {
             creds: Arc::new(Mutex::new(None)),
             terminals: Arc::new(Mutex::new(HashMap::new())),
             cancelled_transfers: Arc::new(Mutex::new(HashSet::new())),
+            cancelled_lists: Arc::new(Mutex::new(HashSet::new())),
             port_forwards: Arc::new(Mutex::new(HashMap::new())),
         }
     }
