@@ -242,8 +242,9 @@ impl SessionBundle {
         Ok(entries)
     }
 
-    /// Read a directory and invoke `emit` with batches of entries. SFTP returns
-    /// the full listing at once; chunking happens before IPC to keep the UI responsive.
+    /// Read a directory incrementally via SFTP opendir/readdir. Checks
+    /// `is_cancelled` before each entry so navigation can abandon in-flight
+    /// listings without waiting for the full directory read.
     pub fn list_dir_stream<C, F>(
         &mut self,
         path: &str,
@@ -257,48 +258,50 @@ impl SessionBundle {
     {
         let sftp = self.get_sftp()?;
         let expanded = shellexpand::tilde(path).into_owned().replace('\\', "/");
+        let dir_path = Path::new(&expanded);
 
-        let raw = sftp.readdir(std::path::Path::new(&expanded)).map_err(|e| {
-            let msg = e.message().to_owned();
-            if msg.to_lowercase().contains("permission") {
-                AppError::permission_denied(format!("Permission denied: {path}"))
-            } else {
-                AppError::internal(format!("Cannot list {path}: {msg}"))
-            }
-        })?;
+        let mut dir = sftp
+            .opendir(dir_path)
+            .map_err(|e| map_list_dir_error(e, path))?;
 
-        let mut batch: Vec<FileEntry> = Vec::with_capacity(chunk_size.min(raw.len()));
+        let mut batch: Vec<FileEntry> = Vec::with_capacity(chunk_size);
         let mut offset = 0usize;
         let mut total = 0usize;
 
-        for (entry_path, stat) in raw {
+        loop {
             if is_cancelled() {
                 return Ok(total);
             }
 
-            let name = match entry_path.file_name() {
-                Some(n) => n.to_string_lossy().to_string(),
-                None => continue,
-            };
-            if name == "." || name == ".." {
-                continue;
-            }
+            match dir.readdir() {
+                Ok((filename, stat)) => {
+                    let name = filename.to_string_lossy().to_string();
+                    if name == "." || name == ".." {
+                        continue;
+                    }
 
-            batch.push(FileEntry {
-                name,
-                path: entry_path.to_string_lossy().replace('\\', "/"),
-                kind: FileKind::from_perm(stat.perm),
-                size: stat.size,
-                permissions: stat.perm.map(format_permissions),
-                modified: stat.mtime,
-            });
+                    batch.push(FileEntry {
+                        name,
+                        path: dir_path
+                            .join(&filename)
+                            .to_string_lossy()
+                            .replace('\\', "/"),
+                        kind: FileKind::from_perm(stat.perm),
+                        size: stat.size,
+                        permissions: stat.perm.map(format_permissions),
+                        modified: stat.mtime,
+                    });
 
-            if batch.len() >= chunk_size {
-                let len = batch.len();
-                emit(batch, offset);
-                offset += len;
-                total += len;
-                batch = Vec::with_capacity(chunk_size);
+                    if batch.len() >= chunk_size {
+                        let len = batch.len();
+                        emit(batch, offset);
+                        offset += len;
+                        total += len;
+                        batch = Vec::with_capacity(chunk_size);
+                    }
+                }
+                Err(e) if is_readdir_eof(&e) => break,
+                Err(e) => return Err(map_list_dir_error(e, path)),
             }
         }
 
@@ -624,6 +627,20 @@ pub(crate) fn base64_encode(bytes: &[u8]) -> String {
         });
     }
     out
+}
+
+fn is_readdir_eof(e: &ssh2::Error) -> bool {
+    // LIBSSH2_ERROR_FILE (-16) — end of directory listing (ssh2 File::readdir).
+    matches!(e.code(), ssh2::ErrorCode::Session(-16)) || e.message() == "no more files"
+}
+
+fn map_list_dir_error(e: ssh2::Error, path: &str) -> AppError {
+    let msg = e.message().to_owned();
+    if msg.to_lowercase().contains("permission") {
+        AppError::permission_denied(format!("Permission denied: {path}"))
+    } else {
+        AppError::internal(format!("Cannot list {path}: {msg}"))
+    }
 }
 
 fn sftp_delete_recursive(sftp: &ssh2::Sftp, path: &Path) -> Result<(), AppError> {

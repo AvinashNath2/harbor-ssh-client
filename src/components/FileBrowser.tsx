@@ -611,6 +611,7 @@ export function FileBrowser({
 
       {tab.refreshStatus === "refreshing" && (
         <StaleListingBanner
+          variant={tab.status === "ready" ? "cached" : "loading"}
           loadedCount={tab.loadedCount}
           totalCount={tab.totalCount ?? undefined}
           estimatedLoadMs={tab.estimatedLoadMs ?? undefined}
@@ -784,13 +785,15 @@ export function FileBrowser({
       </div>
 
       {/* Footer — file count + size */}
-      {(tab.status === "ready" || tab.entries.length > 0) && (
+      {(tab.status === "ready" || tab.entries.length > 0 || tab.refreshStatus === "refreshing") && (
         <RemoteFooter
           entries={tab.entries}
           filtered={search ? visibleEntries.length : null}
           refreshStatus={tab.refreshStatus}
           loadedCount={tab.loadedCount}
           totalCount={tab.totalCount}
+          streamFolderCount={tab.streamFolderCount}
+          streamFileCount={tab.streamFileCount}
         />
       )}
 
@@ -874,21 +877,30 @@ function RemoteFooter({
   refreshStatus,
   loadedCount,
   totalCount,
+  streamFolderCount = 0,
+  streamFileCount = 0,
 }: {
   entries: FileEntry[];
   filtered: number | null;
   refreshStatus?: "idle" | "refreshing";
   loadedCount?: number;
   totalCount?: number | null;
+  streamFolderCount?: number;
+  streamFileCount?: number;
 }) {
-  const folders = entries.filter((e) => e.kind === "directory").length;
-  const files = entries.filter((e) => e.kind !== "directory").length;
+  const cachedFolders = entries.filter((e) => e.kind === "directory").length;
+  const cachedFiles = entries.filter((e) => e.kind !== "directory").length;
+  const useStreamCounts = refreshStatus === "refreshing" && (loadedCount ?? 0) > 0;
+  const folders = useStreamCounts ? streamFolderCount : cachedFolders;
+  const files = useStreamCounts ? streamFileCount : cachedFiles;
   const totalSize = entries.reduce((acc, e) => acc + (e.size ?? 0), 0);
   const staleNote =
     refreshStatus === "refreshing"
       ? totalCount != null && totalCount > 0
         ? `  |  Not latest · updating ${loadedCount?.toLocaleString() ?? "0"} / ${totalCount.toLocaleString()}`
-        : "  |  Not latest"
+        : loadedCount != null && loadedCount > 0
+          ? `  |  Not latest · updating ${loadedCount.toLocaleString()} loaded`
+          : "  |  Not latest"
       : "";
   return (
     <div className="flex h-8 flex-none items-center border-t border-border-raised bg-surface-colheader px-3.5">

@@ -20,6 +20,10 @@ export interface Tab {
   refreshStatus: RefreshStatus;
   loadedCount: number;
   totalCount: number | null;
+  /** Live folder count from in-flight stream (footer during refresh). */
+  streamFolderCount: number;
+  /** Live file count from in-flight stream (footer during refresh). */
+  streamFileCount: number;
   /** Last known full-load duration from cache (ms), used for refresh ETA. */
   estimatedLoadMs: number | null;
   /** When the current background refresh started. */
@@ -73,6 +77,7 @@ export function useTabs(
     unlistenRef.current.delete(tabId);
     pendingRef.current.delete(tabId);
     hadCacheRef.current.delete(tabId);
+    loadStartRef.current.delete(tabId);
   }, []);
 
   const loadDir = useCallback(
@@ -103,7 +108,9 @@ export function useTabs(
                   error: null,
                   refreshStatus: "refreshing",
                   loadedCount: 0,
-                  totalCount: cachedMeta.entries.length,
+                  totalCount: null,
+                  streamFolderCount: 0,
+                  streamFileCount: 0,
                   estimatedLoadMs: cachedMeta.loadDurationMs,
                   refreshStartedAt: Date.now(),
                 }
@@ -120,9 +127,11 @@ export function useTabs(
                   entries: [],
                   status: "loading",
                   error: null,
-                  refreshStatus: "idle",
+                  refreshStatus: "refreshing",
                   loadedCount: 0,
                   totalCount: null,
+                  streamFolderCount: 0,
+                  streamFileCount: 0,
                   estimatedLoadMs: null,
                   refreshStartedAt: Date.now(),
                 }
@@ -145,6 +154,7 @@ export function useTabs(
 
         if (hadCacheRef.current.get(tabId)) return;
 
+        const preview = countStreamPreview(pending);
         setTabs((prev) =>
           prev.map((t) =>
             t.id === tabId
@@ -153,6 +163,8 @@ export function useTabs(
                   entries: [...pending],
                   status: "loading",
                   loadedCount: pending.length,
+                  streamFolderCount: preview.streamFolderCount,
+                  streamFileCount: preview.streamFileCount,
                 }
               : t,
           ),
@@ -173,11 +185,17 @@ export function useTabs(
             pending.push(...chunk.entries);
             pendingRef.current.set(tabId, pending);
 
+            const preview = countStreamPreview(pending);
+            const progress = {
+              loadedCount: pending.length,
+              streamFolderCount: preview.streamFolderCount,
+              streamFileCount: preview.streamFileCount,
+            };
+
             if (hadCacheRef.current.get(tabId)) {
-              setTabs((prev) =>
-                prev.map((t) => (t.id === tabId ? { ...t, loadedCount: pending.length } : t)),
-              );
+              setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, ...progress } : t)));
             } else {
+              setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, ...progress } : t)));
               scheduleFlush();
             }
           },
@@ -200,6 +218,8 @@ export function useTabs(
                       refreshStatus: "idle",
                       loadedCount: fresh.length,
                       totalCount: total,
+                      streamFolderCount: 0,
+                      streamFileCount: 0,
                       estimatedLoadMs: loadDurationMs,
                       refreshStartedAt: null,
                     }
@@ -385,6 +405,19 @@ export function useTabs(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function countStreamPreview(entries: FileEntry[]): {
+  streamFolderCount: number;
+  streamFileCount: number;
+} {
+  let streamFolderCount = 0;
+  let streamFileCount = 0;
+  for (const e of entries) {
+    if (e.kind === "directory") streamFolderCount++;
+    else streamFileCount++;
+  }
+  return { streamFolderCount, streamFileCount };
+}
+
 function makeTab(path: string, label: string): Tab {
   return {
     id: crypto.randomUUID(),
@@ -398,6 +431,8 @@ function makeTab(path: string, label: string): Tab {
     refreshStatus: "idle",
     loadedCount: 0,
     totalCount: null,
+    streamFolderCount: 0,
+    streamFileCount: 0,
     estimatedLoadMs: null,
     refreshStartedAt: null,
   };
