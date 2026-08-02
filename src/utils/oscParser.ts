@@ -188,3 +188,54 @@ const ESC_RE = /\x1b[^[]/g;
 export function stripAnsi(raw: string): string {
   return raw.replace(CSI_RE, "").replace(ESC_RE, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
+
+/** Strip ANSI only — preserves `\r` for terminal-accurate capture processing. */
+export function stripAnsiForCapture(raw: string): string {
+  return raw.replace(CSI_RE, "").replace(ESC_RE, "");
+}
+
+/**
+ * Append PTY text to a line buffer using terminal semantics: `\r` overwrites
+ * the current line, `\n` commits it. Avoids spinner/progress `\r` noise
+ * becoming hundreds of fake log lines.
+ */
+export function appendTerminalCapture(
+  text: string,
+  lines: string[],
+  state: { currentLine: string },
+): void {
+  const cleaned = stripAnsiForCapture(text);
+  for (const c of cleaned) {
+    if (c === "\n") {
+      lines.push(state.currentLine);
+      state.currentLine = "";
+    } else if (c === "\r") {
+      state.currentLine = "";
+    } else {
+      state.currentLine += c;
+    }
+  }
+}
+
+/** Remove Harbor shell-integration setup lines if they leak into the PTY stream. */
+export function stripHarborSetupNoise(bytes: Uint8Array): Uint8Array {
+  const text = new TextDecoder().decode(bytes);
+  if (!text.includes("__hb_")) return bytes;
+  const cleaned = text
+    .split(/\r?\n/)
+    .filter(
+      (line) =>
+        !line.includes("__hb_") && !/^\s*stty -echo/.test(line) && !/^\s*stty echo/.test(line),
+    )
+    .join("\n");
+  if (cleaned.length === text.length) return bytes;
+  return new TextEncoder().encode(cleaned);
+}
+
+/** Flush any in-progress line when a command ends. */
+export function flushTerminalCapture(lines: string[], state: { currentLine: string }): void {
+  if (state.currentLine.length > 0) {
+    lines.push(state.currentLine);
+    state.currentLine = "";
+  }
+}

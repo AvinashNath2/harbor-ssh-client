@@ -2,7 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { listen } from "@tauri-apps/api/event";
-import { ChevronDown, HardDrive, Key, Plus, X } from "lucide-react";
+import { ChevronDown, Clipboard, ClipboardPaste, HardDrive, Key, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   closeTerminal,
@@ -11,10 +11,19 @@ import {
   writeTerminal,
   type ConnectionProfile,
 } from "../api";
-import { OscParser, stripAnsi, type OscEvent } from "../utils/oscParser";
+import { passwordForProfile, keyPassphraseForProfile } from "../utils/profileCredentials";
+import {
+  OscParser,
+  appendTerminalCapture,
+  flushTerminalCapture,
+  stripHarborSetupNoise,
+  type OscEvent,
+} from "../utils/oscParser";
 import type { PendingCommand } from "../hooks/useSessionLog";
 import { onTerminalCommand } from "../lib/terminalBus";
 import { usePageContext } from "../context/PageContext";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { TERMINAL_DEFAULT_MAX_LINES, TERMINAL_DEFAULT_MAX_BYTES } from "../config";
 
 interface TerminalTab {
   id: string;
@@ -28,21 +37,37 @@ interface TerminalTab {
   password?: string;
 }
 
-// Output capture limits (read from localStorage, defaulting to sensible values).
-const DEFAULT_MAX_LINES = 500;
-const DEFAULT_MAX_BYTES = 100 * 1024; // 100 KB
-
 function getOutputLimits(): { maxLines: number; maxBytes: number } {
   try {
     return {
       maxLines:
-        parseInt(localStorage.getItem("harbor.log.maxLines") ?? "", 10) || DEFAULT_MAX_LINES,
+        parseInt(localStorage.getItem("harbor.log.maxLines") ?? "", 10) ||
+        TERMINAL_DEFAULT_MAX_LINES,
       maxBytes:
-        parseInt(localStorage.getItem("harbor.log.maxBytes") ?? "", 10) || DEFAULT_MAX_BYTES,
+        parseInt(localStorage.getItem("harbor.log.maxBytes") ?? "", 10) ||
+        TERMINAL_DEFAULT_MAX_BYTES,
     };
   } catch {
-    return { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES };
+    return { maxLines: TERMINAL_DEFAULT_MAX_LINES, maxBytes: TERMINAL_DEFAULT_MAX_BYTES };
   }
+}
+
+/** Skip shell-integration noise — only log real user commands. */
+function shouldLogCommand(raw: string): boolean {
+  const t = raw.trim();
+  if (!t) return false;
+  if (t.startsWith("__hb_")) return false;
+  if (t.includes("__hb_pre") || t.includes("__hb_pst") || t.includes("__hb_trap")) return false;
+  if (t === "stty -echo 2>/dev/null" || t === "stty echo 2>/dev/null") return false;
+  if (t === "stty -echo" || t === "stty echo") return false;
+  return true;
+}
+
+function sendTerminalInput(terminalId: string, data: string) {
+  const bytes = Array.from(new TextEncoder().encode(data));
+  void writeTerminal(terminalId, bytes).catch((err: unknown) => {
+    console.warn("[Harbor] writeTerminal failed:", err);
+  });
 }
 
 interface TerminalPanelProps {
@@ -123,8 +148,15 @@ export function TerminalPanel({
       if (profile) {
         const authMethod =
           profile.authType === "password"
-            ? { type: "password" as const, password: password ?? "" }
-            : { type: "publicKey" as const, key_path: profile.keyPath ?? "~/.ssh/id_rsa" };
+            ? {
+                type: "password" as const,
+                password: password ?? passwordForProfile(profile) ?? "",
+              }
+            : {
+                type: "publicKey" as const,
+                key_path: profile.keyPath ?? "~/.ssh/id_rsa",
+                passphrase: keyPassphraseForProfile(profile),
+              };
         await openTerminal(id, {
           host: profile.host,
           port: profile.port,
@@ -153,7 +185,7 @@ export function TerminalPanel({
 
   function handlePickProfile(profile: ConnectionProfile) {
     setShowPicker(false);
-    if (profile.authType === "password") {
+    if (profile.authType === "password" && !passwordForProfile(profile)) {
       setPasswordPromptFor(profile);
     } else {
       void openNewTab(profile);
@@ -271,11 +303,6 @@ export function TerminalPanel({
               display: tab.id === activeTabId ? "block" : "none",
             }}
           >
-            {tab.status === "opening" && (
-              <div className="absolute inset-0 flex items-center justify-center text-[13px] text-gray-500">
-                Connecting…
-              </div>
-            )}
             {tab.status === "error" && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
@@ -303,12 +330,23 @@ export function TerminalPanel({
                 </div>
               </div>
             )}
-            {(tab.status === "open" || tab.status === "closed" || tab.status === "dropped") && (
+            {(tab.status === "opening" ||
+              tab.status === "open" ||
+              tab.status === "closed" ||
+              tab.status === "dropped") && (
               <XTermView
                 terminalId={tab.id}
                 active={tab.id === activeTabId}
                 onCommandLogged={onCommandLogged}
               />
+            )}
+            {tab.status === "opening" && (
+              <div
+                className="pointer-events-none absolute inset-0 flex items-center justify-center text-[13px] text-gray-500"
+                style={{ background: "rgba(30,33,39,0.85)" }}
+              >
+                Connecting…
+              </div>
             )}
             {tab.status === "dropped" && (
               <div
@@ -562,6 +600,7 @@ function XTermView({
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const pageCtx = usePageContext();
   const pageCtxRef = useRef(pageCtx);
   pageCtxRef.current = pageCtx;
@@ -574,6 +613,7 @@ function XTermView({
     cwd: string;
     executedAt: number;
     outputLines: string[];
+    currentLine: string;
     outputBytes: number;
     truncated: boolean;
     originalBytes: number;
@@ -582,13 +622,49 @@ function XTermView({
   const onCommandLoggedRef = useRef(onCommandLogged);
   onCommandLoggedRef.current = onCommandLogged;
 
+  function flushPendingCommand(exitCode: number | null = null, durationMs: number | null = null) {
+    const p = pendingRef.current;
+    if (!p || !shouldLogCommand(p.raw)) {
+      pendingRef.current = null;
+      return;
+    }
+    flushTerminalCapture(p.outputLines, p);
+    pendingRef.current = null;
+
+    const output =
+      p.outputLines
+        .map((line) => line.trimEnd())
+        .filter((line, i, arr) => line.length > 0 || i < arr.length - 1)
+        .join("\n") || null;
+
+    onCommandLoggedRef.current?.({
+      executedAt: p.executedAt,
+      cwd: p.cwd,
+      raw: p.raw.trim(),
+      exitCode,
+      durationMs,
+      output,
+      outputTruncated: p.truncated,
+      originalOutputBytes: p.originalBytes,
+      source: "terminal",
+    });
+  }
+
   function handleOscEvent(ev: OscEvent) {
     if (ev.type === "start") {
+      if (pendingRef.current) {
+        flushPendingCommand(null, null);
+      }
+      if (!shouldLogCommand(ev.cmd)) {
+        pendingRef.current = null;
+        return;
+      }
       pendingRef.current = {
         raw: ev.cmd,
         cwd: ev.cwd,
         executedAt: ev.executedAt,
         outputLines: [],
+        currentLine: "",
         outputBytes: 0,
         truncated: false,
         originalBytes: 0,
@@ -596,9 +672,16 @@ function XTermView({
     } else if (pendingRef.current) {
       const p = pendingRef.current;
       pendingRef.current = null;
-      if (!p.raw.trim()) return;
+      if (!shouldLogCommand(p.raw)) return;
 
-      const output = p.outputLines.join("\n") || null;
+      flushTerminalCapture(p.outputLines, p);
+
+      const output =
+        p.outputLines
+          .map((line) => line.trimEnd())
+          .filter((line, i, arr) => line.length > 0 || i < arr.length - 1)
+          .join("\n") || null;
+
       onCommandLoggedRef.current?.({
         executedAt: p.executedAt,
         cwd: p.cwd,
@@ -611,7 +694,6 @@ function XTermView({
         source: "terminal",
       });
 
-      // Publish live context to the chat panel: last command + output snapshot
       const ctx = pageCtxRef.current;
       const prev = ctx.terminal;
       ctx.setTerminalContext({
@@ -627,19 +709,21 @@ function XTermView({
     const p = pendingRef.current;
     if (!p || p.truncated) return;
     const limits = getOutputLimits();
+    const before = p.outputLines.length;
 
-    const text = stripAnsi(new TextDecoder().decode(bytes));
     p.originalBytes += bytes.length;
+    appendTerminalCapture(new TextDecoder().decode(bytes), p.outputLines, p);
 
-    for (const line of text.split("\n")) {
+    for (let i = before; i < p.outputLines.length; i++) {
+      const line = p.outputLines[i] ?? "";
       if (
         p.outputBytes + line.length > limits.maxBytes ||
         p.outputLines.length >= limits.maxLines
       ) {
         p.truncated = true;
+        p.outputLines.length = limits.maxLines;
         break;
       }
-      p.outputLines.push(line);
       p.outputBytes += line.length + 1;
     }
   }
@@ -680,6 +764,62 @@ function XTermView({
       convertEol: true, // treat \n as \r\n for shells that only send LF
       scrollback: 5000,
       allowProposedApi: true,
+      rightClickSelectsWord: true,
+      // Fix unreadable `ls` colors (e.g. white text on bright green background).
+      minimumContrastRatio: 4.5,
+    });
+
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
+      const mod = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      const isInsert = event.key === "Insert" || key === "insert";
+
+      async function copySelection() {
+        const sel = term.getSelection();
+        if (sel) await navigator.clipboard.writeText(sel);
+      }
+
+      async function pasteFromClipboard() {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) term.paste(text);
+        } catch {
+          /* clipboard permission denied */
+        }
+      }
+
+      // Ctrl+Shift+C — copy
+      if (mod && event.shiftKey && key === "c") {
+        void copySelection();
+        return false;
+      }
+      // Ctrl+Insert — copy
+      if (mod && isInsert && !event.shiftKey) {
+        void copySelection();
+        return false;
+      }
+      // Ctrl+Shift+V — paste
+      if (mod && event.shiftKey && key === "v") {
+        void pasteFromClipboard();
+        return false;
+      }
+      // Shift+Insert — paste
+      if (event.shiftKey && isInsert) {
+        void pasteFromClipboard();
+        return false;
+      }
+      // Ctrl+C with selection → copy (not SIGINT)
+      if (mod && !event.shiftKey && key === "c" && term.hasSelection()) {
+        void copySelection();
+        return false;
+      }
+      // Ctrl+V → paste
+      if (mod && !event.shiftKey && key === "v") {
+        void pasteFromClipboard();
+        return false;
+      }
+      return true;
     });
 
     const fitAddon = new FitAddon();
@@ -702,8 +842,10 @@ function XTermView({
       // pendingRef — even when output and end arrive in the same PTY chunk.
       for (const { bytes, event: ev } of oscParserRef.current.feed(raw)) {
         if (bytes.length > 0) {
-          if (pendingRef.current) captureOutputBytes(bytes);
-          term.write(bytes);
+          const clean = stripHarborSetupNoise(bytes);
+          if (clean.length === 0) continue;
+          if (pendingRef.current) captureOutputBytes(clean);
+          term.write(clean);
         }
         if (ev) handleOscEvent(ev);
       }
@@ -715,8 +857,7 @@ function XTermView({
 
     // Send user keystrokes to Rust.
     term.onData((data) => {
-      const bytes = Array.from(new TextEncoder().encode(data));
-      void writeTerminal(terminalId, bytes);
+      sendTerminalInput(terminalId, data);
     });
 
     if (containerRef.current) {
@@ -790,22 +931,65 @@ function XTermView({
     if (!active) return undefined;
     const off = onTerminalCommand((cmd) => {
       const text = cmd.endsWith("\n") ? cmd : cmd + "\n";
-      const bytes = Array.from(new TextEncoder().encode(text));
-      void writeTerminal(terminalId, bytes);
+      sendTerminalInput(terminalId, text);
     });
     return off;
   }, [active, terminalId]);
 
+  const closeCtxMenu = useCallback(() => {
+    setCtxMenu(null);
+  }, []);
+
+  const ctxMenuItems: ContextMenuItem[] = [
+    {
+      label: "Copy",
+      icon: <Clipboard size={13} strokeWidth={2} />,
+      disabled: !termRef.current?.hasSelection(),
+      onClick: () => {
+        const sel = termRef.current?.getSelection();
+        if (sel) void navigator.clipboard.writeText(sel);
+      },
+    },
+    {
+      label: "Paste",
+      icon: <ClipboardPaste size={13} strokeWidth={2} />,
+      onClick: () => {
+        void navigator.clipboard.readText().then((text) => {
+          if (text) termRef.current?.paste(text);
+        });
+      },
+    },
+    {
+      label: "Select All",
+      onClick: () => {
+        termRef.current?.selectAll();
+      },
+    },
+  ];
+
   return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "absolute",
-        inset: 0,
-        background: "#1e2127",
-        padding: "4px 6px",
-        boxSizing: "border-box",
-      }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "#1e2127",
+          padding: "4px 6px",
+          boxSizing: "border-box",
+        }}
+        onMouseDown={() => {
+          termRef.current?.focus();
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setCtxMenu({ x: e.clientX, y: e.clientY });
+        }}
+      />
+      {ctxMenu && (
+        <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxMenuItems} onClose={closeCtxMenu} />
+      )}
+    </>
   );
 }

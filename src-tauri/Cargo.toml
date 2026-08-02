@@ -25,7 +25,6 @@ tauri-plugin-sql  = { version = "2", features = ["sqlite"] }
 serde             = { version = "1", features = ["derive"] }
 serde_json        = "1"
 ssh2              = { version = "0.9", features = ["vendored-openssl"] }
-thiserror         = "2"
 log               = "0.4"
 shellexpand       = "3"
 rusqlite          = { version = "0.31", features = ["bundled"] }
@@ -34,5 +33,5 @@ rusqlite          = { version = "0.31", features = ["bundled"] }
 panic   = "abort"
 codegen-units = 1
 lto     = true
-opt-level = "s"
+opt-level = 3
 strip   = true

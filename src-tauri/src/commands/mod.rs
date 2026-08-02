@@ -28,12 +28,14 @@ pub use docker::{
 };
 pub use downloads::{clear_download_history, delete_download, list_downloads, save_download};
 pub use fs::{
-    cancel_transfer, chmod_file, compute_folder_size, create_folder, delete_path, download_file,
-    download_file_queued, get_file_info, list_folder, read_file_preview, rename_path, upload_file,
-    upload_file_queued, write_file_text,
+    cancel_folder_list, cancel_transfer, chmod_file, compute_folder_size, create_folder,
+    delete_path, download_file, download_file_queued, get_file_info, list_folder,
+    list_folder_stream, read_file_preview, rename_path, stat_path, upload_file, upload_file_queued,
+    write_file_text,
 };
 pub use local_fs::{
     delete_local_path, get_local_home, list_local_folder, rename_local_path, reveal_in_finder,
+    stat_local_path,
 };
 pub use ping::ping;
 pub use port_forward::{

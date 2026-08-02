@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { OLLAMA_BASE_URL } from "../config";
 
 export interface CatalogModel {
   id: string;
@@ -53,7 +54,6 @@ export const MODEL_CATALOG: readonly CatalogModel[] = [
   },
 ] as const;
 
-const OLLAMA_BASE = "http://localhost:11434";
 const ACTIVE_MODEL_KEY = "harbor.activeModel";
 
 /**
@@ -70,8 +70,7 @@ export function isToolCapable(modelId: string | null): boolean {
   return TOOL_CAPABLE_PREFIXES.some((p) => lower.startsWith(p));
 }
 
-/** Suggest a small tool-capable default when the current model isn't. */
-export const RECOMMENDED_TOOL_MODEL = "llama3.2:3b";
+export { AI_RECOMMENDED_MODEL as RECOMMENDED_TOOL_MODEL } from "../config";
 
 interface OllamaTagsResponse {
   models?: { name: string; size?: number; modified_at?: string }[];
@@ -117,7 +116,7 @@ export function useModelManager(): ModelManager {
 
   const refreshInstalled = useCallback(async () => {
     try {
-      const res = await fetch(`${OLLAMA_BASE}/api/tags`);
+      const res = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
       if (!res.ok) throw new Error("Ollama not reachable");
       const data = (await res.json()) as OllamaTagsResponse;
       const names = (data.models ?? []).map((m) => m.name);
@@ -175,7 +174,7 @@ export function useModelManager(): ModelManager {
       const abort = new AbortController();
       abortersRef.current.set(id, abort);
       try {
-        const res = await fetch(`${OLLAMA_BASE}/api/pull`, {
+        const res = await fetch(`${OLLAMA_BASE_URL}/api/pull`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: id, stream: true }),
@@ -232,7 +231,7 @@ export function useModelManager(): ModelManager {
     async (id: string) => {
       setError(id, null);
       try {
-        const res = await fetch(`${OLLAMA_BASE}/api/delete`, {
+        const res = await fetch(`${OLLAMA_BASE_URL}/api/delete`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: id }),

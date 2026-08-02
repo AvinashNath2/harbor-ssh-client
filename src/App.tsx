@@ -49,6 +49,13 @@ import { usePortForwards } from "./hooks/usePortForwards";
 import { useProfiles } from "./hooks/useProfiles";
 import { useResizable } from "./hooks/useResizable";
 import { useTabs } from "./hooks/useTabs";
+import { makeRemoteCacheScope } from "./cache/dirCache";
+import {
+  mergeCredentialsIntoProfile,
+  keyPassphraseForProfile,
+  passwordForProfile,
+  type ConnectCredentialOptions,
+} from "./utils/profileCredentials";
 import { useTransferQueue } from "./hooks/useTransferQueue";
 import { FEATURES } from "./lib/features";
 
@@ -72,10 +79,17 @@ export default function App() {
   // Tracks a direct-click profile connect (key-auth) so we can show a
   // connecting overlay instead of the full new-session modal.
   const [connectingProfile, setConnectingProfile] = useState<ConnectionProfile | null>(null);
+  const pendingCredSaveRef = useRef<{
+    profile: ConnectionProfile;
+    creds: ConnectCredentialOptions;
+  } | null>(null);
 
   // Kill the WebKit default context menu ("Inspect Element", "Reload", etc).
+  // Allow xterm's own context-menu / selection behaviour inside terminals.
   useEffect(() => {
     function block(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest(".xterm")) return;
       e.preventDefault();
     }
     document.addEventListener("contextmenu", block);
@@ -108,16 +122,34 @@ export default function App() {
     new Set(profiles.map((p) => p.folder).filter(Boolean)),
   ) as string[];
 
-  async function handleConnect(args: ConnectArgs, profile: ConnectionProfile | null) {
-    if (profile) await save({ ...profile, lastConnected: Date.now() });
+  async function handleConnect(
+    args: ConnectArgs,
+    profile: ConnectionProfile | null,
+    creds?: ConnectCredentialOptions,
+  ) {
+    if (profile) {
+      pendingCredSaveRef.current = creds ? { profile, creds } : null;
+      await save({ ...profile, lastConnected: Date.now() });
+    } else {
+      pendingCredSaveRef.current = null;
+    }
     setActiveProfile(profile);
     void connect(args);
   }
 
+  // Persist password/passphrase to the saved profile after a successful connect.
+  useEffect(() => {
+    if (state.status !== "connected" || !pendingCredSaveRef.current) return;
+    const { profile, creds } = pendingCredSaveRef.current;
+    pendingCredSaveRef.current = null;
+    void save(mergeCredentialsIntoProfile({ ...profile, lastConnected: Date.now() }, creds));
+  }, [state.status, save]);
+
   /**
    * Click-to-connect for saved sidebar profiles:
-   * - key-auth: show ConnectingOverlay + connect immediately
-   * - password-auth: show the compact password prompt
+   * - key-auth: connect immediately (uses saved passphrase if any)
+   * - password-auth with saved password: connect immediately
+   * - password-auth without saved password: show password prompt
    */
   function directConnectProfile(profile: ConnectionProfile) {
     if (profile.authType === "publicKey") {
@@ -128,16 +160,34 @@ export default function App() {
         authMethod: {
           type: "publicKey",
           key_path: profile.keyPath ?? "~/.ssh/id_rsa",
+          passphrase: keyPassphraseForProfile(profile),
         },
       };
       setConnectingProfile(profile);
-      void handleConnect(args, profile);
-    } else {
-      setPwPromptFor(profile);
+      void handleConnect(args, profile, {
+        keyPassphrase: keyPassphraseForProfile(profile),
+        saveKeyPassphrase: true,
+      });
+      return;
     }
+
+    const savedPw = passwordForProfile(profile);
+    if (savedPw) {
+      const args: ConnectArgs = {
+        host: profile.host,
+        port: profile.port,
+        username: profile.username,
+        authMethod: { type: "password", password: savedPw },
+      };
+      setConnectingProfile(profile);
+      void handleConnect(args, profile);
+      return;
+    }
+
+    setPwPromptFor(profile);
   }
 
-  function submitPasswordPrompt(password: string) {
+  function submitPasswordPrompt(password: string, savePassword: boolean) {
     const p = pwPromptFor;
     if (!p) return;
     const args: ConnectArgs = {
@@ -146,9 +196,7 @@ export default function App() {
       username: p.username,
       authMethod: { type: "password", password },
     };
-    void handleConnect(args, p);
-    // We keep the prompt open — it will be closed by the useEffect below when
-    // connection succeeds; on error the modal shows the error and stays open.
+    void handleConnect(args, p, { password, savePassword });
   }
 
   // Auto-close the password prompt once connection succeeds.
@@ -324,8 +372,8 @@ export default function App() {
               openModal(null);
             }}
             onConnectionLost={handleConnectionLost}
-            onConnect={(args) => {
-              void connect(args);
+            onConnect={(args, profile, creds) => {
+              void handleConnect(args, profile ?? null, creds);
             }}
             onSaveProfile={save}
             onDeleteProfile={remove}
@@ -353,8 +401,8 @@ export default function App() {
             prefillFolder={prefillFolder}
             isLoading={isConnecting}
             error={state.status === "error" ? state.error.message : null}
-            onConnect={(args, profile) => {
-              void handleConnect(args, profile);
+            onConnect={(args, profile, creds) => {
+              void handleConnect(args, profile, creds);
             }}
             onSaveProfile={save}
             onCloseModal={closeModal}
@@ -396,7 +444,11 @@ interface DisconnectedAppProps {
   prefillFolder: string | null;
   isLoading: boolean;
   error: string | null;
-  onConnect: (args: ConnectArgs, profile: ConnectionProfile | null) => void;
+  onConnect: (
+    args: ConnectArgs,
+    profile: ConnectionProfile | null,
+    creds?: ConnectCredentialOptions,
+  ) => void;
   onSaveProfile: (p: ConnectionProfile) => Promise<void>;
   onCloseModal: () => void;
   onOpenModal: () => void;
@@ -532,7 +584,11 @@ interface ConnectedAppProps {
   prefillProfile: ConnectionProfile | null;
   onDisconnect: () => void;
   onConnectionLost: () => Promise<boolean>;
-  onConnect: (args: ConnectArgs) => void;
+  onConnect: (
+    args: ConnectArgs,
+    profile?: ConnectionProfile | null,
+    creds?: ConnectCredentialOptions,
+  ) => void;
   onSaveProfile: (p: ConnectionProfile) => Promise<void>;
   onDeleteProfile: (id: string) => Promise<void>;
   onSelectProfile: (p: ConnectionProfile) => void;
@@ -564,6 +620,9 @@ function ConnectedApp({
   onToggleSidebar,
   onShowLog,
 }: ConnectedAppProps) {
+  const [refreshToast, setRefreshToast] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
   const {
     tabs,
     activeId,
@@ -574,7 +633,20 @@ function ConnectedApp({
     goForward,
     closeTab,
     reload,
-  } = useTabs(result.homeDir, activeProfile?.name ?? result.host, onConnectionLost);
+    invalidatePathCache,
+  } = useTabs(result.homeDir, activeProfile?.name ?? result.host, onConnectionLost, {
+    cacheScope: makeRemoteCacheScope(result.host, result.username),
+    onFreshEntries: (entries) => {
+      const valid = new Set(entries.map((e) => e.path));
+      setSelected((prev) => {
+        const next = new Set([...prev].filter((p) => valid.has(p)));
+        return next.size === prev.size ? prev : next;
+      });
+    },
+    onRefreshFailed: (message) => {
+      setRefreshToast(`Could not refresh folder: ${message}`);
+    },
+  });
 
   // Phase 4 — Local filesystem
   const localFiles = useLocalFiles();
@@ -730,8 +802,6 @@ function ConnectedApp({
     }
   }, [queue.transfers, addNotification]);
 
-  // File selection — cleared whenever the active tab changes.
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   // detailPanelPath — the path whose FileDetailPanel is open. Only set via
   // explicit right-click actions (Properties / Edit permissions); never auto-
   // opened on click.
@@ -767,19 +837,26 @@ function ConnectedApp({
     logCommand(cmd);
   }
 
-  const fileOps = useFileOps(activeTab.path, reload, queue, logFileOp);
+  const fileOps = useFileOps(
+    activeTab.path,
+    () => {
+      invalidatePathCache(activeTab.path);
+      reload();
+    },
+    queue,
+    logFileOp,
+  );
 
   const [showNewSession, setShowNewSession] = useState(false);
   const [newSessionPrefill, setNewSessionPrefill] = useState<ConnectionProfile | null>(null);
   const [newSessionFolder, setNewSessionFolder] = useState<string | null>(null);
 
-  async function handleNewConnect(args: ConnectArgs, profile: ConnectionProfile | null) {
-    // Use the onSaveProfile prop from the outer App component so the *single*
-    // useProfiles() instance is updated. Previously this component called
-    // useProfiles() on its own, which produced a divergent profiles state:
-    // the outer Sidebar would silently show stale data after inline edits.
-    if (profile) await onSaveProfile({ ...profile, lastConnected: Date.now() });
-    onConnect(args);
+  function handleNewConnect(
+    args: ConnectArgs,
+    profile: ConnectionProfile | null,
+    creds?: ConnectCredentialOptions,
+  ) {
+    onConnect(args, profile, creds);
     setShowNewSession(false);
     setNewSessionFolder(null);
   }
@@ -1242,6 +1319,20 @@ function ConnectedApp({
         </div>
       )}
 
+      {refreshToast != null && (
+        <div className="fixed bottom-16 left-1/2 z-50 -translate-x-1/2 rounded-[10px] border border-amber-500/30 bg-white px-4 py-2.5 shadow-lg">
+          <p className="text-[12.5px] text-amber-800">{refreshToast}</p>
+          <button
+            onClick={() => {
+              setRefreshToast(null);
+            }}
+            className="mt-1 text-[11px] text-text-tertiary hover:text-text-primary"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Modal for opening a new session while already connected */}
       {showNewSession && (
         <NewSessionModal
@@ -1249,8 +1340,8 @@ function ConnectedApp({
           initialProfile={newSessionPrefill ?? prefillProfile}
           initialFolder={newSessionFolder ?? undefined}
           currentlyConnectedHost={`${result.username}@${result.host}`}
-          onConnect={(args, profile) => {
-            void handleNewConnect(args, profile);
+          onConnect={(args, profile, creds) => {
+            handleNewConnect(args, profile, creds);
           }}
           onSave={onSaveProfile}
           onClose={() => {

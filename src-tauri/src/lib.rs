@@ -1,4 +1,5 @@
 mod commands;
+mod config;
 mod db;
 mod models;
 mod ssh;
@@ -6,20 +7,20 @@ mod ssh;
 use commands::{
     agent_docker_inspect, agent_docker_list_containers, agent_docker_logs, agent_docker_networks,
     agent_docker_stats, agent_docker_volumes, agent_exec_read, agent_exec_write,
-    agent_list_directory, agent_read_file, append_command, cancel_transfer, chmod_file,
-    clear_download_history, close_session, close_terminal, compute_folder_size, connect,
-    connection_status, create_folder, create_session, delete_download, delete_local_path,
+    agent_list_directory, agent_read_file, append_command, cancel_folder_list, cancel_transfer,
+    chmod_file, clear_download_history, close_session, close_terminal, compute_folder_size,
+    connect, connection_status, create_folder, create_session, delete_download, delete_local_path,
     delete_path, delete_profile, delete_session, delete_sessions_before, disconnect,
     docker_all_container_stats, docker_all_mounts, docker_available, docker_container_events,
     docker_container_inspect, docker_container_logs, docker_container_stats, download_file,
     download_file_queued, get_file_info, get_local_home, list_compose_projects,
     list_docker_containers, list_docker_images, list_docker_networks, list_docker_volumes,
-    list_downloads, list_folder, list_local_folder, list_port_forwards, list_profiles,
-    list_sessions, load_session, open_terminal, parse_ssh_config, ping, ping_connection,
-    read_file_preview, reconnect, rename_local_path, rename_path, resize_terminal,
-    reveal_in_finder, save_download, save_profile, start_port_forward, stop_all_port_forwards,
-    stop_port_forward, storage_age_histogram, storage_category_sizes, storage_check_sudo,
-    storage_cleanup_estimate, storage_cleanup_execute, storage_find_duplicates,
+    list_downloads, list_folder, list_folder_stream, list_local_folder, list_port_forwards,
+    list_profiles, list_sessions, load_session, open_terminal, parse_ssh_config, ping,
+    ping_connection, read_file_preview, reconnect, rename_local_path, rename_path, resize_terminal,
+    reveal_in_finder, save_download, save_profile, start_port_forward, stat_local_path, stat_path,
+    stop_all_port_forwards, stop_port_forward, storage_age_histogram, storage_category_sizes,
+    storage_check_sudo, storage_cleanup_estimate, storage_cleanup_execute, storage_find_duplicates,
     storage_largest_items, storage_overview, storage_scan_path, storage_scan_root,
     storage_system_info, test_connection, upload_file, upload_file_queued, write_file_text,
     write_terminal,
@@ -65,6 +66,9 @@ pub fn run() {
             disconnect,
             connection_status,
             list_folder,
+            list_folder_stream,
+            cancel_folder_list,
+            stat_path,
             create_folder,
             rename_path,
             delete_path,
@@ -78,6 +82,7 @@ pub fn run() {
             delete_profile,
             get_local_home,
             list_local_folder,
+            stat_local_path,
             rename_local_path,
             delete_local_path,
             reveal_in_finder,

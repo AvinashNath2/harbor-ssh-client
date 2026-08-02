@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DOCKER_MAX_LOGS } from "../config";
 import {
   dockerAllContainerStats,
   dockerAllMounts,
@@ -50,7 +51,6 @@ export interface DockerState {
 
 let _logId = 0;
 let _fetchCycle = 0;
-const MAX_LOGS = 300;
 
 export function useDockerExplorer() {
   const [state, setState] = useState<DockerState>({
@@ -109,7 +109,7 @@ export function useDockerExplorer() {
             ...s,
             available: false,
             loading: false,
-            logs: [...s.logs.slice(-(MAX_LOGS - newLogs.length)), ...newLogs],
+            logs: [...s.logs.slice(-(DOCKER_MAX_LOGS - newLogs.length)), ...newLogs],
           }));
         return;
       }
@@ -247,7 +247,7 @@ export function useDockerExplorer() {
           projects,
           allStats,
           allMounts: mountsArr,
-          logs: [...s.logs.slice(-(MAX_LOGS - newLogs.length)), ...newLogs],
+          logs: [...s.logs.slice(-(DOCKER_MAX_LOGS - newLogs.length)), ...newLogs],
         }));
       }
     } catch (e) {
@@ -258,7 +258,7 @@ export function useDockerExplorer() {
           ...s,
           loading: false,
           error: msg,
-          logs: [...s.logs.slice(-(MAX_LOGS - newLogs.length)), ...newLogs],
+          logs: [...s.logs.slice(-(DOCKER_MAX_LOGS - newLogs.length)), ...newLogs],
         }));
       }
     }

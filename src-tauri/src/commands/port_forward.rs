@@ -4,6 +4,7 @@ use std::sync::{mpsc, Arc};
 
 use tauri::Emitter;
 
+use crate::config::{PORT_FORWARD_BUF_SIZE, PORT_FORWARD_POLL_MS};
 use crate::models::{AppError, StoredCreds};
 use crate::ssh::{PortForwardHandle, SessionBundle, SshState};
 
@@ -69,14 +70,14 @@ pub async fn start_port_forward(
     }
 
     let port_forwards = Arc::clone(&state.port_forwards);
-    let id2 = id.clone();
-    let remote_host2 = remote_host.clone();
+    let fwd_id = id.clone();
+    let fwd_remote_host = remote_host.clone();
 
     std::thread::spawn(move || {
         let _ = app.emit(
             "pf-listening",
             PfListeningEvent {
-                id: id2.clone(),
+                id: fwd_id.clone(),
                 local_port,
             },
         );
@@ -91,32 +92,32 @@ pub async fn start_port_forward(
 
             match listener.accept() {
                 Ok((stream, _)) => {
-                    let c = creds.clone();
-                    let rh = remote_host2.clone();
-                    let rp = remote_port;
-                    let a = app.clone();
-                    let id3 = id2.clone();
+                    let conn_creds = creds.clone();
+                    let relay_host = fwd_remote_host.clone();
+                    let relay_port = remote_port;
+                    let app_handle = app.clone();
+                    let conn_id = fwd_id.clone();
                     std::thread::spawn(move || {
-                        if let Err(msg) = relay(stream, &c, &rh, rp) {
-                            let _ = a.emit(
+                        if let Err(e) = relay(stream, &conn_creds, &relay_host, relay_port) {
+                            let _ = app_handle.emit(
                                 "pf-error",
                                 PfErrorEvent {
-                                    id: id3,
-                                    message: msg,
+                                    id: conn_id,
+                                    message: e.message,
                                 },
                             );
                         }
                     });
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    std::thread::sleep(std::time::Duration::from_millis(PORT_FORWARD_POLL_MS));
                 }
                 Err(_) => break,
             }
         }
 
         if let Ok(mut g) = port_forwards.lock() {
-            g.remove(&id2);
+            g.remove(&fwd_id);
         }
     });
 
@@ -124,31 +125,34 @@ pub async fn start_port_forward(
 }
 
 /// Bi-directional relay between a local TCP stream and an SSH direct-tcpip
-/// channel. Returns `Ok(())` on normal close, `Err(message)` only for errors
-/// that prevent the tunnel from being established at all.
+/// channel. Returns `Ok(())` on normal close, `Err` only for errors that
+/// prevent the tunnel from being established at all.
 fn relay(
     mut local: TcpStream,
     creds: &StoredCreds,
     remote_host: &str,
     remote_port: u16,
-) -> Result<(), String> {
-    let bundle = SessionBundle::connect(&creds.host, creds.port, &creds.username, &creds.auth)
-        .map_err(|e| e.message.clone())?;
+) -> Result<(), AppError> {
+    let bundle = SessionBundle::connect(&creds.host, creds.port, &creds.username, &creds.auth)?;
 
     let mut channel = bundle
         .session
         .channel_direct_tcpip(remote_host, remote_port, None)
-        .map_err(|e| format!("cannot reach {remote_host}:{remote_port}: {e}"))?;
+        .map_err(|e| {
+            AppError::internal(format!("cannot reach {remote_host}:{remote_port}: {e}"))
+        })?;
 
-    local.set_nonblocking(true).map_err(|e| e.to_string())?;
+    local
+        .set_nonblocking(true)
+        .map_err(|e| AppError::internal(e.to_string()))?;
     bundle.session.set_blocking(false);
 
     // Pending write buffers — needed because non-blocking writes may be partial.
     let mut l2s: Vec<u8> = Vec::new(); // buffered bytes waiting to go to SSH
     let mut s2l: Vec<u8> = Vec::new(); // buffered bytes waiting to go to local
 
-    let mut local_buf = [0u8; 8192];
-    let mut ssh_buf = [0u8; 8192];
+    let mut local_buf = [0u8; PORT_FORWARD_BUF_SIZE];
+    let mut ssh_buf = [0u8; PORT_FORWARD_BUF_SIZE];
 
     loop {
         let mut progress = false;

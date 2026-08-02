@@ -1,9 +1,9 @@
 use rusqlite::Connection;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub struct Db {
-    pub conn: Mutex<Connection>,
+    pub conn: Arc<Mutex<Connection>>,
 }
 
 impl Db {
@@ -87,7 +87,21 @@ impl Db {
         )?;
 
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         })
+    }
+
+    pub async fn run<F, T>(&self, f: F) -> Result<T, String>
+    where
+        F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+        T: Send + 'static,
+    {
+        let conn = Arc::clone(&self.conn);
+        tauri::async_runtime::spawn_blocking(move || {
+            let guard = conn.lock().map_err(|e| e.to_string())?;
+            f(&guard)
+        })
+        .await
+        .map_err(|e| e.to_string())?
     }
 }

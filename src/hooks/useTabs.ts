@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listFolder, type AppError, type FileEntry } from "../api";
+import { type AppError, type FileEntry } from "../api";
+import { cancelFolderList, startFolderListStream } from "../api/folderListStream";
+import { CACHE_MIN_ENTRIES, dirCache } from "../cache/dirCache";
+import { normalizeRemotePath } from "../utils/remotePath";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+export type RefreshStatus = "idle" | "refreshing";
 
 export interface Tab {
   id: string;
@@ -12,89 +17,290 @@ export interface Tab {
   error: string | null;
   history: string[];
   historyIndex: number;
+  refreshStatus: RefreshStatus;
+  loadedCount: number;
+  totalCount: number | null;
+  /** Live folder count from in-flight stream (footer during refresh). */
+  streamFolderCount: number;
+  /** Live file count from in-flight stream (footer during refresh). */
+  streamFileCount: number;
+  /** Last known full-load duration from cache (ms), used for refresh ETA. */
+  estimatedLoadMs: number | null;
+  /** When the current background refresh started. */
+  refreshStartedAt: number | null;
+}
+
+export interface UseTabsOptions {
+  cacheScope: string;
+  onFreshEntries?: (entries: FileEntry[]) => void;
+  onRefreshFailed?: (message: string) => void;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-/**
- * `onConnectionLost` returns a boolean promise:
- *   true  → the caller successfully reconnected; loadDir will retry once.
- *   false → give up; the tab shows an error.
- */
 export function useTabs(
   homeDir: string,
   connectionLabel: string,
   onConnectionLost?: () => Promise<boolean>,
+  options?: UseTabsOptions,
 ) {
-  // Stable ref so the initial tab's ID is the same object across renders.
+  const cacheScope = options?.cacheScope ?? connectionLabel;
+  const onFreshEntriesRef = useRef(options?.onFreshEntries);
+  onFreshEntriesRef.current = options?.onFreshEntries;
+  const onRefreshFailedRef = useRef(options?.onRefreshFailed);
+  onRefreshFailedRef.current = options?.onRefreshFailed;
+
   const firstTabRef = useRef(makeTab(homeDir, connectionLabel));
 
   const [tabs, setTabs] = useState<Tab[]>([firstTabRef.current]);
   const [activeId, setActiveId] = useState<string>(firstTabRef.current.id);
 
   const inflightRef = useRef<Map<string, number>>(new Map());
-  // Keep callback in a ref so loadDir's useCallback closure stays stable.
+  const listIdRef = useRef<Map<string, string>>(new Map());
+  const unlistenRef = useRef<Map<string, () => void>>(new Map());
+  const pendingRef = useRef<Map<string, FileEntry[]>>(new Map());
+  const hadCacheRef = useRef<Map<string, boolean>>(new Map());
+  const loadStartRef = useRef<Map<string, number>>(new Map());
+
   const onConnectionLostRef = useRef(onConnectionLost);
   onConnectionLostRef.current = onConnectionLost;
 
-  // closeTab ensures tabs always has ≥ 1 entry, so tabs[0] is always defined.
   const activeTab = tabs.find((t) => t.id === activeId) ?? tabs[0];
 
-  // ── Core loader ────────────────────────────────────────────────────────────
+  const cleanupStream = useCallback((tabId: string) => {
+    const listId = listIdRef.current.get(tabId);
+    if (listId) {
+      void cancelFolderList(listId);
+      listIdRef.current.delete(tabId);
+    }
+    unlistenRef.current.get(tabId)?.();
+    unlistenRef.current.delete(tabId);
+    pendingRef.current.delete(tabId);
+    hadCacheRef.current.delete(tabId);
+    loadStartRef.current.delete(tabId);
+  }, []);
 
-  const loadDir = useCallback(async (tabId: string, path: string) => {
-    const seq = (inflightRef.current.get(tabId) ?? 0) + 1;
-    inflightRef.current.set(tabId, seq);
+  const loadDir = useCallback(
+    async (tabId: string, path: string, forceRefresh = false) => {
+      const normalizedPath = normalizeRemotePath(path);
+      const seq = (inflightRef.current.get(tabId) ?? 0) + 1;
+      inflightRef.current.set(tabId, seq);
 
-    setTabs((prev) =>
-      prev.map((t) => (t.id === tabId ? { ...t, path, status: "loading", error: null } : t)),
-    );
+      cleanupStream(tabId);
 
-    try {
-      const entries = await listFolder(path);
-      if (inflightRef.current.get(tabId) !== seq) return;
-      setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, entries, status: "ready" } : t)));
-    } catch (err: unknown) {
-      if (inflightRef.current.get(tabId) !== seq) return;
-      if (isConnectionError(err)) {
-        // Ask the outer app to try to recover. If it reports success, retry
-        // this exact load once. Otherwise leave the tab in an error state so
-        // the fallback disconnect flow runs.
-        const cb = onConnectionLostRef.current;
-        const recovered = cb ? await cb() : false;
-        if (recovered) {
-          try {
-            const entries = await listFolder(path);
+      loadStartRef.current.set(tabId, Date.now());
+
+      const cachedMeta = !forceRefresh
+        ? dirCache.getWithMeta<FileEntry>(cacheScope, normalizedPath)
+        : null;
+      const hadCache = cachedMeta !== null;
+      hadCacheRef.current.set(tabId, hadCache);
+
+      if (cachedMeta) {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  path: normalizedPath,
+                  entries: cachedMeta.entries,
+                  status: "ready",
+                  error: null,
+                  refreshStatus: "refreshing",
+                  loadedCount: 0,
+                  totalCount: null,
+                  streamFolderCount: 0,
+                  streamFileCount: 0,
+                  estimatedLoadMs: cachedMeta.loadDurationMs,
+                  refreshStartedAt: Date.now(),
+                }
+              : t,
+          ),
+        );
+      } else {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  path: normalizedPath,
+                  entries: [],
+                  status: "loading",
+                  error: null,
+                  refreshStatus: "refreshing",
+                  loadedCount: 0,
+                  totalCount: null,
+                  streamFolderCount: 0,
+                  streamFileCount: 0,
+                  estimatedLoadMs: null,
+                  refreshStartedAt: Date.now(),
+                }
+              : t,
+          ),
+        );
+      }
+
+      pendingRef.current.set(tabId, []);
+
+      const listId = crypto.randomUUID();
+      listIdRef.current.set(tabId, listId);
+
+      let rafPending = false;
+      const flushPending = () => {
+        rafPending = false;
+        if (inflightRef.current.get(tabId) !== seq) return;
+        const pending = pendingRef.current.get(tabId) ?? [];
+        if (pending.length === 0) return;
+
+        if (hadCacheRef.current.get(tabId)) return;
+
+        const preview = countStreamPreview(pending);
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  entries: [...pending],
+                  status: "loading",
+                  loadedCount: pending.length,
+                  streamFolderCount: preview.streamFolderCount,
+                  streamFileCount: preview.streamFileCount,
+                }
+              : t,
+          ),
+        );
+      };
+
+      const scheduleFlush = () => {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(flushPending);
+      };
+
+      try {
+        const unlisten = await startFolderListStream(normalizedPath, listId, {
+          onChunk: (chunk) => {
             if (inflightRef.current.get(tabId) !== seq) return;
-            setTabs((prev) =>
-              prev.map((t) => (t.id === tabId ? { ...t, entries, status: "ready" } : t)),
-            );
-            return;
-          } catch (retryErr: unknown) {
+            const pending = pendingRef.current.get(tabId) ?? [];
+            pending.push(...chunk.entries);
+            pendingRef.current.set(tabId, pending);
+
+            const preview = countStreamPreview(pending);
+            const progress = {
+              loadedCount: pending.length,
+              streamFolderCount: preview.streamFolderCount,
+              streamFileCount: preview.streamFileCount,
+            };
+
+            if (hadCacheRef.current.get(tabId)) {
+              setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, ...progress } : t)));
+            } else {
+              setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, ...progress } : t)));
+              scheduleFlush();
+            }
+          },
+          onDone: (total) => {
+            if (inflightRef.current.get(tabId) !== seq) return;
+            const fresh = pendingRef.current.get(tabId) ?? [];
+            const loadDurationMs = Date.now() - (loadStartRef.current.get(tabId) ?? Date.now());
+
+            if (fresh.length >= CACHE_MIN_ENTRIES) {
+              dirCache.set(cacheScope, normalizedPath, fresh, loadDurationMs);
+            }
+
             setTabs((prev) =>
               prev.map((t) =>
-                t.id === tabId ? { ...t, status: "error", error: extractMessage(retryErr) } : t,
+                t.id === tabId
+                  ? {
+                      ...t,
+                      entries: fresh,
+                      status: "ready",
+                      refreshStatus: "idle",
+                      loadedCount: fresh.length,
+                      totalCount: total,
+                      streamFolderCount: 0,
+                      streamFileCount: 0,
+                      estimatedLoadMs: loadDurationMs,
+                      refreshStartedAt: null,
+                    }
+                  : t,
               ),
             );
-            return;
-          }
+
+            onFreshEntriesRef.current?.(fresh);
+            cleanupStream(tabId);
+          },
+          onError: (message) => {
+            if (inflightRef.current.get(tabId) !== seq) return;
+
+            if (hadCacheRef.current.get(tabId)) {
+              setTabs((prev) =>
+                prev.map((t) =>
+                  t.id === tabId ? { ...t, refreshStatus: "idle", status: "ready" } : t,
+                ),
+              );
+              onRefreshFailedRef.current?.(message);
+            } else if (isConnectionMessage(message)) {
+              void tryRecoverAndRetry(tabId, normalizedPath, seq);
+            } else {
+              setTabs((prev) =>
+                prev.map((t) => (t.id === tabId ? { ...t, status: "error", error: message } : t)),
+              );
+            }
+            cleanupStream(tabId);
+          },
+        });
+
+        unlistenRef.current.set(tabId, unlisten);
+      } catch (err: unknown) {
+        if (inflightRef.current.get(tabId) !== seq) return;
+        if (hadCache) {
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.id === tabId ? { ...t, refreshStatus: "idle", status: "ready" } : t,
+            ),
+          );
+          onRefreshFailedRef.current?.(extractMessage(err));
+        } else if (isConnectionMessage(extractMessage(err))) {
+          await tryRecoverAndRetry(tabId, normalizedPath, seq);
+        } else {
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.id === tabId ? { ...t, status: "error", error: extractMessage(err) } : t,
+            ),
+          );
         }
-        return;
+        cleanupStream(tabId);
       }
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === tabId ? { ...t, status: "error", error: extractMessage(err) } : t,
-        ),
-      );
-    }
-  }, []);
+
+      async function tryRecoverAndRetry(tid: string, npath: string, expectedSeq: number) {
+        const cb = onConnectionLostRef.current;
+        const recovered = cb ? await cb() : false;
+        if (recovered && inflightRef.current.get(tid) === expectedSeq) {
+          await loadDir(tid, npath, forceRefresh);
+        } else {
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.id === tid ? { ...t, status: "error", error: "Connection lost" } : t,
+            ),
+          );
+        }
+      }
+    },
+    [cacheScope, cleanupStream],
+  );
 
   useEffect(() => {
     void loadDir(firstTabRef.current.id, homeDir);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Public actions ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const activeStreams = listIdRef.current;
+    return () => {
+      for (const tabId of activeStreams.keys()) cleanupStream(tabId);
+    };
+  }, [cleanupStream]);
 
   const navigateTo = useCallback(
     (tabId: string, path: string) => {
@@ -153,6 +359,7 @@ export function useTabs(
 
   const closeTab = useCallback(
     (tabId: string) => {
+      cleanupStream(tabId);
       setTabs((prev) => {
         if (prev.length === 1) return prev;
         return prev.filter((t) => t.id !== tabId);
@@ -162,17 +369,24 @@ export function useTabs(
         if (prev !== tabId) return prev;
         const idx = tabs.findIndex((t) => t.id === tabId);
         const remaining = tabs.filter((t) => t.id !== tabId);
-        // `Array.at` returns T | undefined, so the ?. chain is valid.
         const target = remaining.at(Math.max(0, idx - 1));
         return target?.id ?? prev;
       });
     },
-    [tabs],
+    [tabs, cleanupStream],
   );
 
   const reload = useCallback(() => {
-    void loadDir(activeId, activeTab.path);
-  }, [activeId, activeTab.path, loadDir]);
+    dirCache.invalidate(cacheScope, activeTab.path);
+    void loadDir(activeId, activeTab.path, true);
+  }, [activeId, activeTab.path, cacheScope, loadDir]);
+
+  const invalidatePathCache = useCallback(
+    (path: string) => {
+      dirCache.invalidateParent(cacheScope, normalizeRemotePath(path));
+    },
+    [cacheScope],
+  );
 
   return {
     tabs,
@@ -185,10 +399,24 @@ export function useTabs(
     openTab,
     closeTab,
     reload,
+    invalidatePathCache,
   };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function countStreamPreview(entries: FileEntry[]): {
+  streamFolderCount: number;
+  streamFileCount: number;
+} {
+  let streamFolderCount = 0;
+  let streamFileCount = 0;
+  for (const e of entries) {
+    if (e.kind === "directory") streamFolderCount++;
+    else streamFileCount++;
+  }
+  return { streamFolderCount, streamFileCount };
+}
 
 function makeTab(path: string, label: string): Tab {
   return {
@@ -200,15 +428,21 @@ function makeTab(path: string, label: string): Tab {
     error: null,
     history: [path],
     historyIndex: 0,
+    refreshStatus: "idle",
+    loadedCount: 0,
+    totalCount: null,
+    streamFolderCount: 0,
+    streamFileCount: 0,
+    estimatedLoadMs: null,
+    refreshStartedAt: null,
   };
 }
 
-function isConnectionError(err: unknown): boolean {
-  if (typeof err === "object" && err !== null && "code" in err) {
-    const code = (err as { code: string }).code;
-    return code === "CONNECTION_FAILED" || code === "NOT_CONNECTED";
-  }
-  return false;
+function isConnectionMessage(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("not connected") || m.includes("connection failed") || m.includes("connection reset")
+  );
 }
 
 function extractMessage(err: unknown): string {

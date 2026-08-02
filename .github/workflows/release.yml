@@ -31,12 +31,6 @@ jobs:
             target: ''
             label: macOS-universal
 
-          # Linux — produces AppImage + .deb
-          - platform: ubuntu-22.04
-            args: ''
-            target: ''
-            label: Linux
-
           # Windows — produces .msi + NSIS installer + portable ZIP
           - platform: windows-latest
             args: ''
@@ -69,19 +63,6 @@ jobs:
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-      - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssh-dev \
-            libssl-dev \
-            libgtk-3-dev
-
       - name: Install frontend dependencies
         run: npm ci
 
@@ -102,7 +83,6 @@ jobs:
             | macOS Apple Silicon | `HarborSCP_*_aarch64.dmg` | — |
             | macOS Intel | `HarborSCP_*_x64.dmg` | — |
             | macOS Universal | `HarborSCP_*_universal.dmg` | — |
-            | Linux | `harbor-scp_*_amd64.AppImage` · `harbor-scp_*_amd64.deb` | — |
             | Windows | `HarborSCP_*_x64-setup.exe` · `HarborSCP_*_x64_en-US.msi` | `HarborSCP_*_x64_portable.zip` ← extract & run |
 
             > **Corporate laptop?** Download the portable ZIP — no installation or admin rights required.
