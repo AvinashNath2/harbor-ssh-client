@@ -739,3 +739,43 @@ export async function storageFindDuplicates(
 ): Promise<DuplicateGroup[]> {
   return invoke<DuplicateGroup[]>("storage_find_duplicates", { root, minSizeBytes, maxDepth });
 }
+
+// ── Java Process Monitor ──────────────────────────────────────────────────────
+
+export interface JavaProcess {
+  pid: number;
+  user: string;
+  cpuPct: number;
+  memPct: number;
+  etime: string;
+  mainClass: string;
+  jvmArgs: string;
+  ports: number[];
+}
+
+export interface ProcessDetail {
+  pid: number;
+  mainClass: string;
+  jvmFlags: string[];
+  systemProps: string[];
+  fullCmdline: string;
+  vmRssKb: number;
+  vmSizeKb: number;
+  threads: number;
+}
+
+export async function processListJava(): Promise<JavaProcess[]> {
+  return invoke<JavaProcess[]>("process_list_java");
+}
+
+export async function processDetail(pid: number): Promise<ProcessDetail> {
+  return invoke<ProcessDetail>("process_detail", { pid });
+}
+
+export async function processThreadDump(pid: number): Promise<string> {
+  return invoke<string>("process_thread_dump", { pid });
+}
+
+export async function processKill(pid: number, force: boolean): Promise<void> {
+  return invoke<void>("process_kill", { pid, force });
+}

@@ -1,4 +1,5 @@
 pub mod agent_tools;
+pub mod process;
 pub mod connect;
 pub mod disconnect;
 pub mod docker;
@@ -48,6 +49,7 @@ pub use session_log::{
 };
 pub use ssh_config::parse_ssh_config;
 pub use status::{connection_status, ping_connection};
+pub use process::{process_detail, process_kill, process_list_java, process_thread_dump};
 pub use storage::{
     storage_age_histogram, storage_category_sizes, storage_check_sudo, storage_cleanup_estimate,
     storage_cleanup_execute, storage_find_duplicates, storage_largest_items, storage_overview,

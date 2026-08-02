@@ -13,6 +13,7 @@ import {
 import { ChatPanel } from "./components/ChatPanel";
 import { DockerExplorerPage } from "./components/DockerExplorerPage";
 import { StorageAnalyzerPage } from "./components/StorageAnalyzerPage";
+import { ProcessMonitorPage } from "./components/ProcessMonitorPage";
 import { DockerPreflight } from "./components/DockerPreflight";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PageContextProvider } from "./context/PageContext";
@@ -659,6 +660,7 @@ function ConnectedApp({
 
   // Storage Analyzer (Data Profiler)
   const [showStorageAnalyzer, setShowStorageAnalyzer] = useState(false);
+  const [showProcessMonitor, setShowProcessMonitor] = useState(false);
 
   // AI Chat panel (global — usable from any page)
   const [showChat, setShowChat] = useState<boolean>(() => {
@@ -1194,6 +1196,9 @@ function ConnectedApp({
                     onOpenDataProfiler={() => {
                       setShowStorageAnalyzer(true);
                     }}
+                    onOpenJavaMonitor={() => {
+                      setShowProcessMonitor(true);
+                    }}
                   />
                 </div>
               )}
@@ -1400,6 +1405,16 @@ function ConnectedApp({
                   }
                 : undefined
             }
+          />
+        </ErrorBoundary>
+      )}
+
+      {showProcessMonitor && result && (
+        <ErrorBoundary>
+          <ProcessMonitorPage
+            host={result.host}
+            username={result.username}
+            onClose={() => setShowProcessMonitor(false)}
           />
         </ErrorBoundary>
       )}
