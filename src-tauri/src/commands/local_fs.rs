@@ -1,3 +1,5 @@
+use tauri_plugin_dialog::DialogExt;
+
 use crate::models::{AppError, LocalFileEntry};
 
 #[tauri::command]
@@ -74,6 +76,60 @@ pub fn delete_local_path(path: String) -> Result<(), AppError> {
         std::fs::remove_file(p)
             .map_err(|e| AppError::internal(format!("Failed to delete file: {e}")))
     }
+}
+
+#[tauri::command]
+pub async fn export_profiles_json(
+    json: String,
+    app: tauri::AppHandle,
+) -> Result<bool, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let file_path = app
+            .dialog()
+            .file()
+            .set_file_name("harbor-connections.json")
+            .add_filter("JSON", &["json"])
+            .blocking_save_file();
+
+        match file_path {
+            Some(fp) => {
+                let path = fp
+                    .into_path()
+                    .map_err(|e| AppError::internal(format!("Invalid path: {e}")))?;
+                std::fs::write(&path, json.as_bytes())
+                    .map_err(|e| AppError::internal(format!("Failed to write file: {e}")))?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("task join error: {e}")))?
+}
+
+#[tauri::command]
+pub async fn import_profiles_json(app: tauri::AppHandle) -> Result<Option<String>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let file_path = app
+            .dialog()
+            .file()
+            .add_filter("JSON", &["json"])
+            .blocking_pick_file();
+
+        match file_path {
+            Some(fp) => {
+                let path = fp
+                    .into_path()
+                    .map_err(|e| AppError::internal(format!("Invalid path: {e}")))?;
+                let content = std::fs::read_to_string(&path)
+                    .map_err(|e| AppError::internal(format!("Failed to read file: {e}")))?;
+                Ok(Some(content))
+            }
+            None => Ok(None),
+        }
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("task join error: {e}")))?
 }
 
 #[tauri::command]

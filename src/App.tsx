@@ -2,6 +2,8 @@ import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import {
+  exportProfilesJson,
+  importProfilesJson,
   reconnect as reconnectApi,
   revealInFinder,
   stopAllPortForwards,
@@ -219,6 +221,38 @@ export default function App() {
     setShowImport(false);
   }
 
+  async function handleExportJson() {
+    const json = JSON.stringify(profiles, null, 2);
+    await exportProfilesJson(json);
+  }
+
+  async function handleImportJson() {
+    const content = await importProfilesJson();
+    if (!content) return;
+    try {
+      const imported = JSON.parse(content) as ConnectionProfile[];
+      if (!Array.isArray(imported)) throw new Error("Expected a JSON array");
+      for (const p of imported) {
+        await save({ ...p, id: crypto.randomUUID() });
+      }
+    } catch (e) {
+      console.error("Failed to parse imported profiles JSON:", e);
+    }
+  }
+
+  async function handleRenameFolder(oldName: string, newName: string) {
+    const toUpdate = profiles.filter((p) => (p.folder ?? "General") === oldName);
+    for (const p of toUpdate) {
+      await save({ ...p, folder: newName === "General" ? undefined : newName });
+    }
+  }
+
+  async function handleMoveToFolder(profileId: string, newFolder: string) {
+    const profile = profiles.find((p) => p.id === profileId);
+    if (!profile) return;
+    await save({ ...profile, folder: newFolder === "General" ? undefined : newFolder });
+  }
+
   function openModal(profile: ConnectionProfile | null = null) {
     setPrefillProfile(profile);
     setPrefillFolder(null);
@@ -379,13 +413,16 @@ export default function App() {
             onSaveProfile={save}
             onDeleteProfile={remove}
             onSelectProfile={directConnectProfile}
-            onEditProfile={openModal}
             onStarProfile={(p) => {
               void handleStarProfile(p);
             }}
             onImportSshConfig={() => {
               setShowImport(true);
             }}
+            onExportJson={() => { void handleExportJson(); }}
+            onImportJson={() => { void handleImportJson(); }}
+            onRenameFolder={(old, next) => { void handleRenameFolder(old, next); }}
+            onMoveToFolder={(id, folder) => { void handleMoveToFolder(id, folder); }}
             sidebarHidden={sidebarHidden}
             onToggleSidebar={toggleSidebar}
             onShowLog={() => {
@@ -422,6 +459,10 @@ export default function App() {
             onImportSshConfig={() => {
               setShowImport(true);
             }}
+            onExportJson={() => { void handleExportJson(); }}
+            onImportJson={() => { void handleImportJson(); }}
+            onRenameFolder={(old, next) => { void handleRenameFolder(old, next); }}
+            onMoveToFolder={(id, folder) => { void handleMoveToFolder(id, folder); }}
             sidebarHidden={sidebarHidden}
             onToggleSidebar={toggleSidebar}
             onShowLog={() => {
@@ -459,6 +500,10 @@ interface DisconnectedAppProps {
   onStarProfile: (profile: ConnectionProfile) => void;
   onNewSessionInFolder: (folder: string) => void;
   onImportSshConfig: () => void;
+  onExportJson: () => void;
+  onImportJson: () => void;
+  onRenameFolder: (oldName: string, newName: string) => void;
+  onMoveToFolder: (profileId: string, newFolder: string) => void;
   sidebarHidden: boolean;
   onToggleSidebar: (next: boolean) => void;
   onShowLog: () => void;
@@ -483,6 +528,10 @@ function DisconnectedApp({
   onStarProfile,
   onNewSessionInFolder,
   onImportSshConfig,
+  onExportJson,
+  onImportJson,
+  onRenameFolder,
+  onMoveToFolder,
   sidebarHidden,
   onToggleSidebar,
   onShowLog,
@@ -521,6 +570,10 @@ function DisconnectedApp({
             onStarProfile={onStarProfile}
             onNewSessionInFolder={onNewSessionInFolder}
             onImportSshConfig={onImportSshConfig}
+            onExportJson={onExportJson}
+            onImportJson={onImportJson}
+            onRenameFolder={onRenameFolder}
+            onMoveToFolder={onMoveToFolder}
             onHide={() => {
               onToggleSidebar(true);
             }}
@@ -593,9 +646,12 @@ interface ConnectedAppProps {
   onSaveProfile: (p: ConnectionProfile) => Promise<void>;
   onDeleteProfile: (id: string) => Promise<void>;
   onSelectProfile: (p: ConnectionProfile) => void;
-  onEditProfile: (p: ConnectionProfile) => void;
   onStarProfile: (p: ConnectionProfile) => void;
   onImportSshConfig: () => void;
+  onExportJson: () => void;
+  onImportJson: () => void;
+  onRenameFolder: (oldName: string, newName: string) => void;
+  onMoveToFolder: (profileId: string, newFolder: string) => void;
   sidebarHidden: boolean;
   onToggleSidebar: (next: boolean) => void;
   onShowLog: () => void;
@@ -614,9 +670,12 @@ function ConnectedApp({
   onSaveProfile,
   onDeleteProfile,
   onSelectProfile,
-  onEditProfile,
   onStarProfile,
   onImportSshConfig,
+  onExportJson,
+  onImportJson,
+  onRenameFolder,
+  onMoveToFolder,
   sidebarHidden,
   onToggleSidebar,
   onShowLog,
@@ -1025,7 +1084,7 @@ function ConnectedApp({
                 onSelectProfile(p);
               }}
               onEditProfile={(p) => {
-                onEditProfile(p);
+                openNewSession(p);
               }}
               onNewSession={() => {
                 openNewSession(null);
@@ -1036,6 +1095,10 @@ function ConnectedApp({
               onStarProfile={onStarProfile}
               onNewSessionInFolder={openNewSessionInFolder}
               onImportSshConfig={onImportSshConfig}
+              onExportJson={onExportJson}
+              onImportJson={onImportJson}
+              onRenameFolder={onRenameFolder}
+              onMoveToFolder={onMoveToFolder}
               onHide={() => {
                 onToggleSidebar(true);
               }}

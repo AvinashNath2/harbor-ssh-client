@@ -35,8 +35,8 @@ pub use fs::{
     write_file_text,
 };
 pub use local_fs::{
-    delete_local_path, get_local_home, list_local_folder, rename_local_path, reveal_in_finder,
-    stat_local_path,
+    delete_local_path, export_profiles_json, get_local_home, import_profiles_json,
+    list_local_folder, rename_local_path, reveal_in_finder, stat_local_path,
 };
 pub use ping::ping;
 pub use port_forward::{
@@ -49,7 +49,7 @@ pub use session_log::{
 };
 pub use ssh_config::parse_ssh_config;
 pub use status::{connection_status, ping_connection};
-pub use process::{process_detail, process_kill, process_list_java, process_thread_dump};
+pub use process::{process_detail, process_kill, process_list_java, process_vm_memory};
 pub use storage::{
     storage_age_histogram, storage_category_sizes, storage_check_sudo, storage_cleanup_estimate,
     storage_cleanup_execute, storage_find_duplicates, storage_largest_items, storage_overview,

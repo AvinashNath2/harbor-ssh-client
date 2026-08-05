@@ -177,21 +177,49 @@ export class OscParser {
   }
 }
 
-// Matches ESC [ ... letter  (CSI sequences, e.g. colour codes, cursor moves).
-// Matches ESC <non-[>       (other two-byte escape sequences).
+// Full VT/ECMA-48 + Windows ConPTY escape sequence patterns.
+// Order matters: multi-character sequences (OSC, DCS) must be stripped
+// before the catch-all ESC_RE, otherwise ESC_RE consumes the leading ESC
+// and leaves the rest as garbage.
+
+// CSI: ESC [ [parameter bytes 0x20–0x3F]* [final byte 0x40–0x7E]
+// Covers standard sequences AND private-mode extensions: ?25h, ?2004h, >c, =h, !p …
 // eslint-disable-next-line no-control-regex
-const CSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
+const CSI_RE = /\x1b\[[\x20-\x3f]*[\x40-\x7e]/g;
+// OSC: ESC ] <any> BEL  or  ESC ] <any> ESC \  (title sets, hyperlinks, etc.)
 // eslint-disable-next-line no-control-regex
-const ESC_RE = /\x1b[^[]/g;
+const OSC_RE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+// DCS / APC / PM / SOS: ESC [P^_X] <any> ESC \  (tmux, sixel, etc.)
+// eslint-disable-next-line no-control-regex
+const DCS_RE = /\x1b[P^_X][^\x1b]*(?:\x1b\\|$)/g;
+// SS3: ESC O <letter>  (arrow/function keys on Windows ConPTY)
+// eslint-disable-next-line no-control-regex
+const SS3_RE = /\x1bO[A-Za-z]/g;
+// 8-bit C1 control codes (0x80–0x9F) emitted by Windows ConPTY as single bytes
+// eslint-disable-next-line no-control-regex
+const C1_RE = /[\x80-\x9f]/g;
+// Remaining: ESC + any single character (RIS, IND, RI, etc.)
+// eslint-disable-next-line no-control-regex
+const ESC_RE = /\x1b./g;
+
+function applyAnsiStrip(s: string): string {
+  return s
+    .replace(OSC_RE, "")
+    .replace(DCS_RE, "")
+    .replace(SS3_RE, "")
+    .replace(CSI_RE, "")
+    .replace(C1_RE, "")
+    .replace(ESC_RE, "");
+}
 
 /** Strip ANSI/VT100 escape sequences so captured output is plain text. */
 export function stripAnsi(raw: string): string {
-  return raw.replace(CSI_RE, "").replace(ESC_RE, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return applyAnsiStrip(raw).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
 /** Strip ANSI only — preserves `\r` for terminal-accurate capture processing. */
 export function stripAnsiForCapture(raw: string): string {
-  return raw.replace(CSI_RE, "").replace(ESC_RE, "");
+  return applyAnsiStrip(raw);
 }
 
 /**

@@ -2,13 +2,16 @@ import {
   AlertTriangle,
   ChevronRight,
   Coffee,
+  Cpu,
+  MemoryStick,
+  Power,
   RefreshCw,
-  TerminalSquare,
+  Terminal,
   X,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { JavaProcess, ProcessDetail } from "../api";
+import type { JavaProcess, ProcessDetail, VmMemory } from "../api";
 import type { ProcessLogEntry } from "../hooks/useProcessMonitor";
 import { useProcessMonitor } from "../hooks/useProcessMonitor";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -19,10 +22,15 @@ interface ProcessMonitorPageProps {
   onClose: () => void;
 }
 
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes.toString()} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(0)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
 function fmtMem(kb: number): string {
-  if (kb < 1024) return `${kb.toString()} KB`;
-  if (kb < 1024 * 1024) return `${(kb / 1024).toFixed(0)} MB`;
-  return `${(kb / 1024 / 1024).toFixed(1)} GB`;
+  return fmtBytes(kb * 1024);
 }
 
 function relativeTime(ts: number): string {
@@ -32,59 +40,69 @@ function relativeTime(ts: number): string {
   return `${Math.floor(s / 60).toString()}m ago`;
 }
 
-// ── Thread dump modal ─────────────────────────────────────────────────────────
+// ── VM Memory bar ─────────────────────────────────────────────────────────────
 
-function ThreadDumpModal({
-  pid,
-  content,
-  onClose,
-}: {
-  pid: number;
-  content: string;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+function VmMemoryBar({ mem, processCount }: { mem: VmMemory; processCount: number }) {
+  const usedPct = mem.totalBytes > 0 ? (mem.usedBytes / mem.totalBytes) * 100 : 0;
+  const javaPct = mem.totalBytes > 0 ? (mem.javaRssBytes / mem.totalBytes) * 100 : 0;
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center"
-      style={{ background: "rgba(20,18,15,0.62)", backdropFilter: "blur(4px)" }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      className="flex flex-none items-center gap-5 border-b border-border px-5 py-2.5"
+      style={{ background: "#f9f8f5" }}
     >
-      <div
-        className="flex h-[88vh] w-[80vw] max-w-[1100px] flex-col overflow-hidden rounded-modal border border-border-raised bg-surface-pane"
-        style={{ boxShadow: "0 40px 100px -20px rgba(20,18,15,0.55)" }}
-      >
-        <div className="flex items-center gap-3 border-b border-border px-5 py-3">
-          <TerminalSquare size={16} strokeWidth={2} className="text-warning flex-shrink-0" />
-          <span className="flex-1 text-[13.5px] font-semibold text-text-primary">
-            Thread Dump — PID {pid}
-          </span>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
-          >
-            <X size={14} strokeWidth={2.2} />
-          </button>
+      {/* System memory */}
+      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        <MemoryStick size={14} strokeWidth={2} className="flex-shrink-0 text-text-tertiary" />
+        <div className="flex-1 min-w-0">
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.4px] text-text-tertiary">
+              System RAM
+            </span>
+            <span className="text-[11px] text-text-secondary font-mono">
+              {fmtBytes(mem.usedBytes)} / {fmtBytes(mem.totalBytes)}{" "}
+              <span className="text-text-faint">({usedPct.toFixed(0)}%)</span>
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-chip">
+            <div
+              className={`h-full rounded-full transition-all ${
+                usedPct > 85 ? "bg-danger" : usedPct > 65 ? "bg-warning" : "bg-success"
+              }`}
+              style={{ width: `${usedPct.toFixed(1)}%` }}
+            />
+          </div>
+          <div className="mt-1 text-[10.5px] text-text-faint">
+            {fmtBytes(mem.availableBytes)} available
+          </div>
         </div>
-        <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-[12px] leading-relaxed text-text-primary">
-          {content || "No output captured."}
-        </pre>
-        <div className="flex justify-end border-t border-border px-5 py-2">
-          <span className="text-[11px] text-text-faint">
-            <kbd className="rounded border border-border-input px-1.5 py-0.5 font-mono text-[10px]">
-              Esc
-            </kbd>{" "}
-            close
-          </span>
+      </div>
+
+      {/* Divider */}
+      <div className="h-10 w-px bg-border flex-shrink-0" />
+
+      {/* Java RSS */}
+      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        <Coffee size={14} strokeWidth={2} className="flex-shrink-0 text-orange-500" />
+        <div className="flex-1 min-w-0">
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.4px] text-text-tertiary">
+              Java RSS
+            </span>
+            <span className="text-[11px] text-text-secondary font-mono">
+              {fmtBytes(mem.javaRssBytes)}{" "}
+              <span className="text-text-faint">({javaPct.toFixed(0)}% of RAM)</span>
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-chip">
+            <div
+              className="h-full rounded-full bg-orange-400 transition-all"
+              style={{ width: `${Math.min(javaPct, 100).toFixed(1)}%` }}
+            />
+          </div>
+          <div className="mt-1 text-[10.5px] text-text-faint">
+            across {processCount.toString()} process{processCount !== 1 ? "es" : ""}
+          </div>
         </div>
       </div>
     </div>
@@ -337,18 +355,15 @@ function LogsDrawer({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPageProps) {
-  const { state, refresh, fetchDetail, fetchThreadDump, killProcess, refreshInterval, setRefreshInterval } =
+  const { state, refresh, fetchDetail, killProcess, refreshInterval, setRefreshInterval } =
     useProcessMonitor();
 
   const [selectedPid, setSelectedPid] = useState<number | null>(null);
   const [detail, setDetail] = useState<ProcessDetail | null>(null);
   const [showLogs, setShowLogs] = useState(false);
-  const [threadDump, setThreadDump] = useState<{ pid: number; content: string } | null>(null);
 
-  // Confirm dialogs
   const [killConfirm, setKillConfirm] = useState<JavaProcess | null>(null);
   const [forceKillConfirm, setForceKillConfirm] = useState<JavaProcess | null>(null);
-  const [threadDumpConfirm, setThreadDumpConfirm] = useState<JavaProcess | null>(null);
   const [busy, setBusy] = useState(false);
 
   const handleSelectProcess = useCallback(
@@ -383,16 +398,6 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
     }
     setBusy(false);
   }, [forceKillConfirm, killProcess, selectedPid]);
-
-  const handleThreadDumpConfirmed = useCallback(async () => {
-    if (!threadDumpConfirm) return;
-    const pid = threadDumpConfirm.pid;
-    setThreadDumpConfirm(null);
-    setBusy(true);
-    const content = await fetchThreadDump(pid);
-    setBusy(false);
-    setThreadDump({ pid, content });
-  }, [threadDumpConfirm, fetchThreadDump]);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-surface">
@@ -474,6 +479,11 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
         </button>
       </div>
 
+      {/* VM Memory bar */}
+      {state.vmMemory && (
+        <VmMemoryBar mem={state.vmMemory} processCount={state.processes.length} />
+      )}
+
       {/* Body */}
       <div className="flex min-h-0 flex-1">
         {/* Process table */}
@@ -484,14 +494,20 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
             style={{
               height: "32px",
               background: "#ece9e3",
-              gridTemplateColumns: "2fr 60px 60px 60px 60px 80px 100px 260px",
+              gridTemplateColumns: "2fr 64px 72px 80px 80px 80px 90px 180px",
             }}
           >
             <span>App / JAR</span>
             <span>PID</span>
             <span>User</span>
-            <span>CPU %</span>
-            <span>Mem %</span>
+            <span className="flex items-center gap-1">
+              <Cpu size={10} strokeWidth={2} />
+              CPU %
+            </span>
+            <span className="flex items-center gap-1">
+              <MemoryStick size={10} strokeWidth={2} />
+              Mem %
+            </span>
             <span>Uptime</span>
             <span>Ports</span>
             <span>Actions</span>
@@ -499,7 +515,6 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
 
           {/* Rows */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {/* Loading / error / empty */}
             {state.loading && state.processes.length === 0 && (
               <div className="flex h-full items-center justify-center gap-2 text-[13px] text-text-faint">
                 <RefreshCw size={14} strokeWidth={2} className="animate-spin" />
@@ -530,18 +545,18 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
                   key={p.pid}
                   onClick={() => void handleSelectProcess(p)}
                   className={`grid cursor-pointer items-center gap-3 border-b border-subtle px-4 py-2 transition-colors ${
-                    isSelected
-                      ? "bg-[rgba(47,107,219,0.07)]"
-                      : "hover:bg-surface-hover"
+                    isSelected ? "bg-[rgba(47,107,219,0.07)]" : "hover:bg-surface-hover"
                   }`}
                   style={{
-                    gridTemplateColumns: "2fr 60px 60px 60px 60px 80px 100px 260px",
+                    gridTemplateColumns: "2fr 64px 72px 80px 80px 80px 90px 180px",
                   }}
                 >
                   {/* App name */}
-                  <div className="flex min-w-0 items-center gap-2">
-                    {isSelected && (
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    {isSelected ? (
                       <ChevronRight size={12} strokeWidth={2.5} className="flex-shrink-0 text-text-accent" />
+                    ) : (
+                      <Coffee size={11} strokeWidth={2} className="flex-shrink-0 text-orange-400" />
                     )}
                     <span className="truncate text-[12.5px] font-medium text-text-primary">
                       {p.mainClass}
@@ -550,14 +565,34 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
 
                   <span className="font-mono text-[11.5px] text-text-secondary">{p.pid}</span>
                   <span className="truncate text-[11.5px] text-text-secondary">{p.user}</span>
+
+                  {/* CPU % with color coding */}
                   <span
-                    className={`font-mono text-[11.5px] ${p.cpuPct > 80 ? "font-semibold text-danger" : p.cpuPct > 40 ? "text-warning" : "text-text-secondary"}`}
+                    className={`flex items-center gap-1 font-mono text-[11.5px] ${
+                      p.cpuPct > 80
+                        ? "font-semibold text-danger"
+                        : p.cpuPct > 40
+                          ? "text-warning"
+                          : "text-text-secondary"
+                    }`}
                   >
+                    {p.cpuPct > 40 && (
+                      <Cpu size={10} strokeWidth={2} className="flex-shrink-0 opacity-70" />
+                    )}
                     {p.cpuPct.toFixed(1)}
                   </span>
-                  <span className="font-mono text-[11.5px] text-text-secondary">
+
+                  {/* Mem % with color coding */}
+                  <span
+                    className={`flex items-center gap-1 font-mono text-[11.5px] ${
+                      p.memPct > 60
+                        ? "font-semibold text-warning"
+                        : "text-text-secondary"
+                    }`}
+                  >
                     {p.memPct.toFixed(1)}
                   </span>
+
                   <span className="font-mono text-[11px] text-text-tertiary">{p.etime}</span>
                   <span className="font-mono text-[11px] text-text-tertiary">
                     {p.ports.length > 0 ? p.ports.join(", ") : "—"}
@@ -568,17 +603,6 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
                     className="flex items-center gap-1.5"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {/* Thread Dump */}
-                    <button
-                      onClick={() => setThreadDumpConfirm(p)}
-                      disabled={busy}
-                      className="flex items-center gap-1 rounded-chip border border-warning/60 px-2 py-0.5 text-[10.5px] font-medium text-warning transition-colors hover:bg-warning/10 disabled:opacity-40"
-                      title="Capture thread dump"
-                    >
-                      <TerminalSquare size={10} strokeWidth={2} />
-                      Thread Dump
-                    </button>
-
                     {/* Kill (SIGTERM) */}
                     <button
                       onClick={() => setKillConfirm(p)}
@@ -586,6 +610,7 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
                       className="flex items-center gap-1 rounded-chip border border-danger/60 px-2 py-0.5 text-[10.5px] font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-40"
                       title="Graceful shutdown (SIGTERM)"
                     >
+                      <Power size={10} strokeWidth={2} />
                       Kill
                     </button>
 
@@ -628,21 +653,11 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
         onClick={() => setShowLogs((v) => !v)}
         className="absolute bottom-4 right-4 z-50 flex items-center gap-1.5 rounded-chip border border-border-raised bg-surface-chip px-2.5 py-1 text-[11px] text-text-secondary shadow-sm transition-colors hover:bg-surface-hover"
       >
-        <TerminalSquare size={11} strokeWidth={2} />
+        <Terminal size={11} strokeWidth={2} />
         Commands ({state.logs.length})
       </button>
 
       {/* Confirmation dialogs */}
-      {threadDumpConfirm && (
-        <ConfirmDialog
-          title={`Thread Dump — ${threadDumpConfirm.mainClass}`}
-          message={`This sends SIGQUIT to PID ${threadDumpConfirm.pid.toString()} to capture a thread snapshot. The process will continue running normally.\n\nCommand: jstack ${threadDumpConfirm.pid.toString()}`}
-          confirmLabel="Capture"
-          onConfirm={() => void handleThreadDumpConfirmed()}
-          onCancel={() => setThreadDumpConfirm(null)}
-        />
-      )}
-
       {killConfirm && (
         <ConfirmDialog
           title={`Kill — ${killConfirm.mainClass}`}
@@ -658,15 +673,6 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
           process={forceKillConfirm}
           onConfirm={() => void handleForceKillConfirmed()}
           onCancel={() => setForceKillConfirm(null)}
-        />
-      )}
-
-      {/* Thread dump output modal */}
-      {threadDump && (
-        <ThreadDumpModal
-          pid={threadDump.pid}
-          content={threadDump.content}
-          onClose={() => setThreadDump(null)}
         />
       )}
     </div>

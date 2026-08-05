@@ -200,6 +200,14 @@ export async function revealInFinder(path: string): Promise<void> {
   await invoke("reveal_in_finder", { path });
 }
 
+export async function exportProfilesJson(json: string): Promise<boolean> {
+  return invoke<boolean>("export_profiles_json", { json });
+}
+
+export async function importProfilesJson(): Promise<string | null> {
+  return invoke<string | null>("import_profiles_json");
+}
+
 // ── Phase 5 — Terminal ────────────────────────────────────────────────────────
 
 export async function openTerminal(
@@ -747,10 +755,18 @@ export interface JavaProcess {
   user: string;
   cpuPct: number;
   memPct: number;
+  rssKb: number;
   etime: string;
   mainClass: string;
   jvmArgs: string;
   ports: number[];
+}
+
+export interface VmMemory {
+  totalBytes: number;
+  usedBytes: number;
+  availableBytes: number;
+  javaRssBytes: number;
 }
 
 export interface ProcessDetail {
@@ -772,8 +788,8 @@ export async function processDetail(pid: number): Promise<ProcessDetail> {
   return invoke<ProcessDetail>("process_detail", { pid });
 }
 
-export async function processThreadDump(pid: number): Promise<string> {
-  return invoke<string>("process_thread_dump", { pid });
+export async function processVmMemory(): Promise<VmMemory> {
+  return invoke<VmMemory>("process_vm_memory");
 }
 
 export async function processKill(pid: number, force: boolean): Promise<void> {

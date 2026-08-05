@@ -12,10 +12,20 @@ pub struct JavaProcess {
     pub user: String,
     pub cpu_pct: f32,
     pub mem_pct: f32,
+    pub rss_kb: u64,
     pub etime: String,
     pub main_class: String,
     pub jvm_args: String,
     pub ports: Vec<u16>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct VmMemory {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub available_bytes: u64,
+    pub java_rss_bytes: u64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -69,24 +79,30 @@ pub async fn process_list_java(
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
         let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
 
+        // pid user cpu% mem% rss(KB) etime args
         let ps_out = bundle
-            .exec("ps -eo pid,user,pcpu,pmem,etime,args --no-headers 2>/dev/null | grep java | grep -v grep")
+            .exec("ps -eo pid,user,pcpu,pmem,rss,etime,args 2>/dev/null | grep java | grep -v grep")
             .unwrap_or_default();
 
         let mut processes: Vec<JavaProcess> = Vec::new();
 
         for line in ps_out.lines() {
-            // ps columns are whitespace-separated; args may contain spaces — split into 6 fields max
-            let mut cols = line.splitn(6, ' ').map(str::trim).filter(|s| !s.is_empty());
-            let pid: u32 = match cols.next().and_then(|v| v.parse().ok()) {
-                Some(v) => v,
-                None => continue,
+            // ps pads columns with spaces — collect tokens, reconstruct args from index 6 onward
+            let tokens: Vec<&str> = line.split_whitespace().collect();
+            if tokens.len() < 7 {
+                continue;
+            }
+            let pid: u32 = match tokens[0].parse() {
+                Ok(v) => v,
+                Err(_) => continue,
             };
-            let user = cols.next().unwrap_or("").to_string();
-            let cpu_pct: f32 = cols.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
-            let mem_pct: f32 = cols.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
-            let etime = cols.next().unwrap_or("").to_string();
-            let args = cols.next().unwrap_or("").trim();
+            let user = tokens[1].to_string();
+            let cpu_pct: f32 = tokens[2].parse().unwrap_or(0.0);
+            let mem_pct: f32 = tokens[3].parse().unwrap_or(0.0);
+            let rss_kb: u64 = tokens[4].parse().unwrap_or(0);
+            let etime = tokens[5].to_string();
+            let args = tokens[6..].join(" ");
+            let args = args.trim();
 
             if !args.contains("java") {
                 continue;
@@ -108,9 +124,10 @@ pub async fn process_list_java(
                 user,
                 cpu_pct,
                 mem_pct,
+                rss_kb,
                 etime,
                 main_class,
-                jvm_args: args.to_string(),
+                jvm_args: args.to_owned(),
                 ports,
             });
         }
@@ -202,10 +219,9 @@ pub async fn process_detail(
 }
 
 #[tauri::command]
-pub async fn process_thread_dump(
-    pid: u32,
+pub async fn process_vm_memory(
     state: tauri::State<'_, SshState>,
-) -> Result<String, AppError> {
+) -> Result<VmMemory, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
         let guard = ssh
@@ -213,27 +229,33 @@ pub async fn process_thread_dump(
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
         let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
 
-        let out = bundle
-            .exec(&format!("jstack {pid} 2>/dev/null"))
+        // free -b prints bytes; line 2 is "Mem: total used free shared buff/cache available"
+        let free_out = bundle
+            .exec("free -b 2>/dev/null | awk 'NR==2{print $2, $3, $7}'")
             .unwrap_or_default();
 
-        if !out.trim().is_empty() {
-            return Ok(out);
-        }
+        let nums: Vec<u64> = free_out
+            .split_whitespace()
+            .filter_map(|v| v.parse().ok())
+            .collect();
 
-        // Fallback: SIGQUIT
-        let _ = bundle.exec(&format!("kill -3 {pid} 2>/dev/null"));
-        let _ = bundle.exec("sleep 0.5");
-        let fallback = bundle
-            .exec(&format!("cat /proc/{pid}/fd/1 2>/dev/null"))
-            .unwrap_or_else(|_| {
-                "Thread dump sent via SIGQUIT — check the process stdout/log for output.".into()
-            });
+        let total_bytes = nums.first().copied().unwrap_or(0);
+        let used_bytes = nums.get(1).copied().unwrap_or(0);
+        let available_bytes = nums.get(2).copied().unwrap_or(0);
 
-        Ok(if fallback.trim().is_empty() {
-            "Thread dump sent via SIGQUIT — check the process stdout/log for output.".into()
-        } else {
-            fallback
+        // Sum RSS of all Java processes (already in KB from ps)
+        let java_rss_kb: u64 = bundle
+            .exec("ps -eo rss,args 2>/dev/null | grep java | grep -v grep | awk '{sum+=$1} END{print sum+0}'")
+            .unwrap_or_default()
+            .trim()
+            .parse()
+            .unwrap_or(0);
+
+        Ok(VmMemory {
+            total_bytes,
+            used_bytes,
+            available_bytes,
+            java_rss_bytes: java_rss_kb * 1024,
         })
     })
     .await
