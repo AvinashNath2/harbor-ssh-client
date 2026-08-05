@@ -1472,12 +1472,12 @@ function ConnectedApp({
         </ErrorBoundary>
       )}
 
-      {showProcessMonitor && result && (
+      {showProcessMonitor && (
         <ErrorBoundary>
           <ProcessMonitorPage
             host={result.host}
             username={result.username}
-            onClose={() => setShowProcessMonitor(false)}
+            onClose={() => { setShowProcessMonitor(false); }}
           />
         </ErrorBoundary>
       )}

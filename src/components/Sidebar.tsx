@@ -70,7 +70,7 @@ function PortalMenu({
       const right = window.innerWidth - rect.right;
       // Only update state if position actually changed (avoids re-render loop)
       setPos((prev) =>
-        prev?.top === top && prev?.right === right ? prev : { top, right },
+        prev !== null && prev.top === top && prev.right === right ? prev : { top, right },
       );
     }
 
@@ -83,9 +83,9 @@ function PortalMenu({
       }
     }
     document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
+    return () => { document.removeEventListener("mousedown", onMouseDown); };
     // onClose intentionally omitted — accessed via ref to avoid re-run loop
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open, anchorRef]);
 
   if (!open || !pos) return null;
@@ -289,7 +289,7 @@ export function Sidebar({
           <Search size={12} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); }}
             placeholder="Search sessions..."
             className="flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-faint"
           />
@@ -301,7 +301,7 @@ export function Sidebar({
         {(["virtual", "recent"] as const).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => { setActiveTab(tab); }}
             className={`relative pb-2 pr-5 text-[12.5px] font-medium capitalize transition-colors ${
               activeTab === tab ? "text-accent-dark" : "text-text-tertiary hover:text-text-secondary"
             }`}
@@ -340,9 +340,9 @@ export function Sidebar({
                     folder={folder}
                     count={items.length}
                     expanded={!isCollapsed}
-                    onToggle={() => toggleFolder(folder)}
-                    onAddSession={() => onNewSessionInFolder(folder)}
-                    onRename={(newName) => onRenameFolder(folder, newName)}
+                    onToggle={() => { toggleFolder(folder); }}
+                    onAddSession={() => { onNewSessionInFolder(folder); }}
+                    onRename={(newName) => { onRenameFolder(folder, newName); }}
                   />
                   {!isCollapsed &&
                     items.map((profile) => (
@@ -352,11 +352,11 @@ export function Sidebar({
                         depth={2}
                         isActive={resolvedActiveId === profile.id}
                         folders={allFolders}
-                        onSelect={() => onSelectProfile(profile)}
-                        onEdit={() => onEditProfile(profile)}
-                        onDelete={() => onDeleteProfile(profile.id)}
-                        onStar={() => onStarProfile(profile)}
-                        onMove={(targetFolder) => onMoveToFolder(profile.id, targetFolder)}
+                        onSelect={() => { onSelectProfile(profile); }}
+                        onEdit={() => { onEditProfile(profile); }}
+                        onDelete={() => { onDeleteProfile(profile.id); }}
+                        onStar={() => { onStarProfile(profile); }}
+                        onMove={(targetFolder) => { onMoveToFolder(profile.id, targetFolder); }}
                       />
                     ))}
                 </div>
@@ -372,7 +372,7 @@ export function Sidebar({
                     <input
                       ref={newFolderInputRef}
                       value={newFolderName}
-                      onChange={(e) => setNewFolderName(e.target.value)}
+                      onChange={(e) => { setNewFolderName(e.target.value); }}
                       placeholder="Folder name…"
                       className="flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-faint"
                       onKeyDown={(e) => {
@@ -388,7 +388,7 @@ export function Sidebar({
                 </div>
               ) : (
                 <button
-                  onClick={() => setCreatingFolder(true)}
+                  onClick={() => { setCreatingFolder(true); }}
                   className="mt-1 flex w-full items-center gap-2 px-4 py-1.5 text-[12px] font-medium text-accent-dark transition-colors hover:text-accent-dark/80"
                 >
                   <Plus size={12} strokeWidth={2.5} />
@@ -414,11 +414,11 @@ export function Sidebar({
                 isActive={resolvedActiveId === profile.id}
                 showTimestamp
                 folders={allFolders}
-                onSelect={() => onSelectProfile(profile)}
-                onEdit={() => onEditProfile(profile)}
-                onDelete={() => onDeleteProfile(profile.id)}
-                onStar={() => onStarProfile(profile)}
-                onMove={(targetFolder) => onMoveToFolder(profile.id, targetFolder)}
+                onSelect={() => { onSelectProfile(profile); }}
+                onEdit={() => { onEditProfile(profile); }}
+                onDelete={() => { onDeleteProfile(profile.id); }}
+                onStar={() => { onStarProfile(profile); }}
+                onMove={(targetFolder) => { onMoveToFolder(profile.id, targetFolder); }}
               />
             ))}
           </>
@@ -482,7 +482,7 @@ function FolderRow({
           <input
             ref={renameInputRef}
             value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
+            onChange={(e) => { setRenameValue(e.target.value); }}
             className="flex-1 bg-transparent text-[12px] text-text-primary outline-none"
             onKeyDown={(e) => {
               if (e.key === "Enter") submitRename();
@@ -533,7 +533,7 @@ function FolderRow({
         <MoreHorizontal size={12} strokeWidth={2} />
       </button>
 
-      <PortalMenu anchorRef={menuBtnRef} open={menuOpen} onClose={() => setMenuOpen(false)}>
+      <PortalMenu anchorRef={menuBtnRef} open={menuOpen} onClose={() => { setMenuOpen(false); }}>
         <button
           onClick={() => {
             setMenuOpen(false);
@@ -655,7 +655,7 @@ function SessionRow({
       {!isActive && (
         <div
           className="flex flex-shrink-0 items-center gap-0.5"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); }}
         >
           <button
             onClick={onStar}
@@ -697,7 +697,7 @@ function SessionRow({
             <div className="h-px bg-border" />
             {/* Move to Folder */}
             <button
-              onClick={() => setShowMoveSubmenu((v) => !v)}
+              onClick={() => { setShowMoveSubmenu((v) => !v); }}
               className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
               <span>Move to Folder</span>
@@ -766,7 +766,7 @@ function SettingsRow({
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
+    return () => { document.removeEventListener("mousedown", onOutside); };
   }, [open]);
 
   function pick(fn: () => void) {
@@ -786,7 +786,7 @@ function SettingsRow({
       {/* Settings gear → dropdown */}
       <div ref={ref} className="relative">
         <button
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => { setOpen((v) => !v); }}
           className={`flex h-[26px] w-[26px] items-center justify-center rounded-[6px] transition-colors ${
             open
               ? "bg-surface-chip text-text-secondary"
@@ -810,7 +810,7 @@ function SettingsRow({
             </div>
 
             <button
-              onClick={() => pick(onImportSshConfig)}
+              onClick={() => { pick(onImportSshConfig); }}
               className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
               <Download size={13} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
@@ -820,7 +820,7 @@ function SettingsRow({
             <div className="mx-3 h-px bg-border" />
 
             <button
-              onClick={() => pick(onExportJson)}
+              onClick={() => { pick(onExportJson); }}
               className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
               <FileDown size={13} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
@@ -828,7 +828,7 @@ function SettingsRow({
             </button>
 
             <button
-              onClick={() => pick(onImportJson)}
+              onClick={() => { pick(onImportJson); }}
               className="flex w-full items-center gap-2.5 px-3 py-2 pb-3 text-left text-[12.5px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
               <FileUp size={13} strokeWidth={2} className="flex-shrink-0 text-text-faint" />

@@ -61,7 +61,7 @@ fn parse_main_class(args: &str) -> String {
             continue;
         }
         if part.ends_with(".jar") {
-            return part.split('/').last().unwrap_or(part).to_string();
+            return part.split('/').next_back().unwrap_or(part).to_string();
         }
         return part.to_string();
     }

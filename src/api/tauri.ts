@@ -793,5 +793,5 @@ export async function processVmMemory(): Promise<VmMemory> {
 }
 
 export async function processKill(pid: number, force: boolean): Promise<void> {
-  return invoke<void>("process_kill", { pid, force });
+  await invoke("process_kill", { pid, force });
 }

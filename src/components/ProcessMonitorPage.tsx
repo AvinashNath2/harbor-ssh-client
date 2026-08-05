@@ -127,8 +127,8 @@ function ForceKillModal({
       onConfirm();
       return;
     }
-    const t = setTimeout(() => setCount((c) => c - 1), 1000);
-    return () => clearTimeout(t);
+    const t = setTimeout(() => { setCount((c) => c - 1); }, 1000);
+    return () => { clearTimeout(t); };
   }, [count, onConfirm]);
 
   useEffect(() => {
@@ -136,7 +136,7 @@ function ForceKillModal({
       if (e.key === "Escape") onCancel();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
   }, [onCancel]);
 
   return (
@@ -444,7 +444,7 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
           {([10, 30, 0] as const).map((v) => (
             <button
               key={v}
-              onClick={() => setRefreshInterval(v)}
+              onClick={() => { setRefreshInterval(v); }}
               className={`rounded-[6px] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 refreshInterval === v
                   ? "bg-white text-text-primary shadow-sm"
@@ -601,11 +601,11 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
                   {/* Action buttons */}
                   <div
                     className="flex items-center gap-1.5"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); }}
                   >
                     {/* Kill (SIGTERM) */}
                     <button
-                      onClick={() => setKillConfirm(p)}
+                      onClick={() => { setKillConfirm(p); }}
                       disabled={busy}
                       className="flex items-center gap-1 rounded-chip border border-danger/60 px-2 py-0.5 text-[10.5px] font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-40"
                       title="Graceful shutdown (SIGTERM)"
@@ -616,7 +616,7 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
 
                     {/* Force Kill (SIGKILL) */}
                     <button
-                      onClick={() => setForceKillConfirm(p)}
+                      onClick={() => { setForceKillConfirm(p); }}
                       disabled={busy}
                       className="flex items-center gap-1 rounded-chip bg-danger px-2 py-0.5 text-[10.5px] font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-40"
                       title="Force kill (SIGKILL)"
@@ -644,13 +644,13 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
 
         {/* Logs drawer */}
         {showLogs && (
-          <LogsDrawer logs={state.logs} onClose={() => setShowLogs(false)} />
+          <LogsDrawer logs={state.logs} onClose={() => { setShowLogs(false); }} />
         )}
       </div>
 
       {/* Floating commands pill */}
       <button
-        onClick={() => setShowLogs((v) => !v)}
+        onClick={() => { setShowLogs((v) => !v); }}
         className="absolute bottom-4 right-4 z-50 flex items-center gap-1.5 rounded-chip border border-border-raised bg-surface-chip px-2.5 py-1 text-[11px] text-text-secondary shadow-sm transition-colors hover:bg-surface-hover"
       >
         <Terminal size={11} strokeWidth={2} />
@@ -664,7 +664,7 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
           message={`Send SIGTERM to PID ${killConfirm.pid.toString()} (${killConfirm.mainClass}). The process will have a chance to shut down gracefully.\n\nCommand: kill -15 ${killConfirm.pid.toString()}`}
           confirmLabel="Kill (SIGTERM)"
           onConfirm={() => void handleKillConfirmed()}
-          onCancel={() => setKillConfirm(null)}
+          onCancel={() => { setKillConfirm(null); }}
         />
       )}
 
@@ -672,7 +672,7 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
         <ForceKillModal
           process={forceKillConfirm}
           onConfirm={() => void handleForceKillConfirmed()}
-          onCancel={() => setForceKillConfirm(null)}
+          onCancel={() => { setForceKillConfirm(null); }}
         />
       )}
     </div>
