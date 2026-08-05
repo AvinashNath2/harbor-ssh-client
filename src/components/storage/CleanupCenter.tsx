@@ -173,11 +173,7 @@ export function CleanupCenter({
           disabled={estimatingAll}
           className="flex items-center gap-1.5 rounded-lg border border-border-input px-3 py-1.5 text-[12px] text-text-secondary transition-colors hover:bg-surface-chip disabled:opacity-50"
         >
-          {estimatingAll ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <RefreshCw size={12} />
-          )}
+          {estimatingAll ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
           Estimate All
         </button>
       </div>
@@ -191,10 +187,7 @@ export function CleanupCenter({
             background: sudoAvailable ? "rgba(34,197,94,0.05)" : "rgba(245,158,11,0.05)",
           }}
         >
-          <ShieldAlert
-            size={13}
-            className={sudoAvailable ? "text-green-400" : "text-amber-400"}
-          />
+          <ShieldAlert size={13} className={sudoAvailable ? "text-green-400" : "text-amber-400"} />
           <span className={sudoAvailable ? "text-green-700" : "text-amber-700"}>
             {sudoAvailable
               ? "Passwordless sudo available — sudo presets will run without a password prompt"
@@ -266,14 +259,18 @@ export function CleanupCenter({
                   {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition */}
                   {!est && !loading && (
                     <button
-                      onClick={() => { void estimateOne(preset.target); }}
+                      onClick={() => {
+                        void estimateOne(preset.target);
+                      }}
                       className="rounded-lg border border-border-input px-2.5 py-1 text-[11.5px] text-text-secondary hover:bg-surface-chip"
                     >
                       Estimate
                     </button>
                   )}
                   <button
-                    onClick={() => { setSelectedPreset(preset); }}
+                    onClick={() => {
+                      setSelectedPreset(preset);
+                    }}
                     disabled={notAvail}
                     className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                     style={{ background: "linear-gradient(135deg,#3f7be0,#2f6bdb)" }}
@@ -294,7 +291,9 @@ export function CleanupCenter({
           estimate={estimates[selectedPreset.target] ?? null}
           sudoAvailable={sudoAvailable}
           onExecute={onExecute}
-          onClose={() => { setSelectedPreset(null); }}
+          onClose={() => {
+            setSelectedPreset(null);
+          }}
         />
       )}
     </div>
@@ -322,11 +321,9 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortedRef = useRef(false);
 
-  const needsPassword =
-    (estimate?.sudo_required ?? false) && sudoAvailable === false;
+  const needsPassword = (estimate?.sudo_required ?? false) && sudoAvailable === false;
   const needsDangerConfirm = !!preset.dangerConfirm;
-  const dangerConfirmed =
-    !needsDangerConfirm || dangerInput === preset.dangerConfirm;
+  const dangerConfirmed = !needsDangerConfirm || dangerInput === preset.dangerConfirm;
 
   const startCountdown = useCallback(() => {
     timerRef.current = setInterval(() => {
@@ -380,13 +377,9 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
-      <div
-        className="w-full max-w-lg rounded-2xl border border-border-raised bg-surface-pane shadow-2xl"
-      >
+      <div className="w-full max-w-lg rounded-2xl border border-border-raised bg-surface-pane shadow-2xl">
         {/* Header */}
-        <div
-          className="flex items-center gap-3 border-b border-border px-5 py-4"
-        >
+        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[rgba(47,107,219,0.10)]">
             <preset.Icon size={16} className="text-[#3f7be0]" />
           </div>
@@ -402,7 +395,10 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
             <p className="text-[11.5px] text-text-faint">{preset.description}</p>
           </div>
           {phase === "confirm" && (
-            <button onClick={cancel} className="ml-1 rounded-lg p-1 text-text-faint hover:text-text-primary">
+            <button
+              onClick={cancel}
+              className="ml-1 rounded-lg p-1 text-text-faint hover:text-text-primary"
+            >
               <X size={14} />
             </button>
           )}
@@ -417,13 +413,9 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
                 <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">
                   Command to run
                 </p>
-                <code
-                  className="block rounded-lg px-3 py-2.5 font-mono text-[11.5px] text-text-primary bg-surface-colheader"
-                >
+                <code className="block rounded-lg px-3 py-2.5 font-mono text-[11.5px] text-text-primary bg-surface-colheader">
                   {estimate?.command_preview ?? preset.target}
-                  {estimate?.sudo_required && (
-                    <span className="ml-1 text-amber-400"> [sudo]</span>
-                  )}
+                  {estimate?.sudo_required && <span className="ml-1 text-amber-400"> [sudo]</span>}
                 </code>
               </div>
 
@@ -441,8 +433,8 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
               {needsDangerConfirm && (
                 <div className="rounded-lg border border-red-400 bg-red-50 p-3">
                   <p className="mb-2 text-[11.5px] font-semibold text-red-700">
-                    This action will permanently delete Docker volumes. Database data stored
-                    in volumes will be lost and cannot be recovered.
+                    This action will permanently delete Docker volumes. Database data stored in
+                    volumes will be lost and cannot be recovered.
                   </p>
                   <label className="mb-1.5 block text-[10.5px] font-semibold uppercase tracking-widest text-red-600">
                     Type <span className="font-mono">{preset.dangerConfirm}</span> to unlock
@@ -450,7 +442,9 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
                   <input
                     type="text"
                     value={dangerInput}
-                    onChange={(e) => { setDangerInput(e.target.value); }}
+                    onChange={(e) => {
+                      setDangerInput(e.target.value);
+                    }}
                     placeholder={preset.dangerConfirm}
                     className="w-full rounded-lg border border-red-300 bg-white px-3 py-2 font-mono text-[12.5px] text-red-800 outline-none focus:border-red-500"
                     onKeyDown={(e) => {
@@ -479,7 +473,9 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
                   <input
                     type="password"
                     value={sudoPassword}
-                    onChange={(e) => { setSudoPassword(e.target.value); }}
+                    onChange={(e) => {
+                      setSudoPassword(e.target.value);
+                    }}
                     placeholder="Enter sudo password…"
                     className="w-full rounded-lg border border-border-input bg-surface-chip px-3 py-2 font-mono text-[12.5px] text-text-primary outline-none focus:border-[#3f7be0]"
                     onKeyDown={(e) => {
@@ -551,9 +547,7 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
         </div>
 
         {/* Footer */}
-        <div
-          className="flex items-center justify-between border-t border-border px-5 py-4"
-        >
+        <div className="flex items-center justify-between border-t border-border px-5 py-4">
           {phase === "confirm" ? (
             <>
               <button
@@ -566,8 +560,7 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
               <div className="flex items-center gap-3">
                 {dangerConfirmed && !needsPassword && countdown > 0 && (
                   <span className="text-[12px] text-text-faint">
-                    Running in{" "}
-                    <span className="font-semibold text-amber-300">{countdown}s</span>…
+                    Running in <span className="font-semibold text-amber-300">{countdown}s</span>…
                   </span>
                 )}
                 {!dangerConfirmed && (
@@ -576,7 +569,9 @@ function CleanupModal({ preset, estimate, sudoAvailable, onExecute, onClose }: C
                   </span>
                 )}
                 <button
-                  onClick={() => { void execute(); }}
+                  onClick={() => {
+                    void execute();
+                  }}
                   disabled={(needsPassword && !sudoPassword) || !dangerConfirmed}
                   className="rounded-lg px-4 py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                   style={{ background: "linear-gradient(135deg,#ef4444,#dc2626)" }}

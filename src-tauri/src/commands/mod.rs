@@ -1,5 +1,4 @@
 pub mod agent_tools;
-pub mod process;
 pub mod connect;
 pub mod disconnect;
 pub mod docker;
@@ -8,6 +7,7 @@ pub mod fs;
 pub mod local_fs;
 pub mod ping;
 pub mod port_forward;
+pub mod process;
 pub mod profiles;
 pub mod session_log;
 pub mod ssh_config;
@@ -42,6 +42,7 @@ pub use ping::ping;
 pub use port_forward::{
     list_port_forwards, start_port_forward, stop_all_port_forwards, stop_port_forward,
 };
+pub use process::{process_detail, process_kill, process_list_java, process_vm_memory};
 pub use profiles::{delete_profile, list_profiles, save_profile};
 pub use session_log::{
     append_command, close_session, create_session, delete_session, delete_sessions_before,
@@ -49,7 +50,6 @@ pub use session_log::{
 };
 pub use ssh_config::parse_ssh_config;
 pub use status::{connection_status, ping_connection};
-pub use process::{process_detail, process_kill, process_list_java, process_vm_memory};
 pub use storage::{
     storage_age_histogram, storage_category_sizes, storage_check_sudo, storage_cleanup_estimate,
     storage_cleanup_execute, storage_find_duplicates, storage_largest_items, storage_overview,

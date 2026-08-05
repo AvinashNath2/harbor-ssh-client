@@ -60,8 +60,7 @@ function TreeRow({ node, totalBytes, onExpand, onCollapse, depth }: TreeRowProps
   const pct = totalBytes > 0 ? (node.size_bytes / totalBytes) * 100 : 0;
 
   // Color by share of total disk
-  const barColor =
-    pct > 40 ? "#ef4444" : pct > 15 ? "#f97316" : pct > 5 ? "#f59e0b" : "#3f7be0";
+  const barColor = pct > 40 ? "#ef4444" : pct > 15 ? "#f97316" : pct > 5 ? "#f59e0b" : "#3f7be0";
 
   function handleToggle() {
     if (node.loading) return;

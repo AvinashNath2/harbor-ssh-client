@@ -136,7 +136,9 @@ export function useStorageAnalyzer() {
     if (!mountedRef.current) return;
     const cycle = ++_fetchCycle;
     const logs: StorageLogEntry[] = [];
-    const add = (e: Omit<StorageLogEntry, "id" | "ts" | "cycle">) => { appendLog(e, cycle, logs); };
+    const add = (e: Omit<StorageLogEntry, "id" | "ts" | "cycle">) => {
+      appendLog(e, cycle, logs);
+    };
 
     setState((s) => ({ ...s, loading: true, error: null }));
 
@@ -298,7 +300,11 @@ export function useStorageAnalyzer() {
         categoryRawSizes: catSizes,
       }));
     } else {
-      appendLog({ level: "warn", source: "categorize", message: "category sizes failed" }, cycle, l5);
+      appendLog(
+        { level: "warn", source: "categorize", message: "category sizes failed" },
+        cycle,
+        l5,
+      );
       setState((s) => ({ ...s, deepScanning: false, lastDeepScan: Date.now() }));
     }
     flushLogs(l5);
@@ -318,11 +324,7 @@ export function useStorageAnalyzer() {
 
       const t0 = Date.now();
       const l: StorageLogEntry[] = [];
-      appendLog(
-        { level: "info", source: "tree", message: `du -d 1 ${rootPath}…` },
-        cycle,
-        l,
-      );
+      appendLog({ level: "info", source: "tree", message: `du -d 1 ${rootPath}…` }, cycle, l);
       flushLogs(l);
 
       const children = await safe("storage_scan_path", () => storageScanPath(rootPath, 1));
@@ -390,7 +392,9 @@ export function useStorageAnalyzer() {
         {
           level: children ? "info" : "warn",
           source: "tree",
-          message: children ? `${String(children.length)} entries — ${String(dt)}ms` : `expand failed: ${path}`,
+          message: children
+            ? `${String(children.length)} entries — ${String(dt)}ms`
+            : `expand failed: ${path}`,
         },
         cycle,
         l2,
@@ -434,7 +438,11 @@ export function useStorageAnalyzer() {
 
       const l: StorageLogEntry[] = [];
       appendLog(
-        { level: "info", source: "largest", message: `Fetching largest files & folders under ${root}…` },
+        {
+          level: "info",
+          source: "largest",
+          message: `Fetching largest files & folders under ${root}…`,
+        },
         cycle,
         l,
       );

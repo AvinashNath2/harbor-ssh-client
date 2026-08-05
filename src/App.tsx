@@ -419,10 +419,18 @@ export default function App() {
             onImportSshConfig={() => {
               setShowImport(true);
             }}
-            onExportJson={() => { void handleExportJson(); }}
-            onImportJson={() => { void handleImportJson(); }}
-            onRenameFolder={(old, next) => { void handleRenameFolder(old, next); }}
-            onMoveToFolder={(id, folder) => { void handleMoveToFolder(id, folder); }}
+            onExportJson={() => {
+              void handleExportJson();
+            }}
+            onImportJson={() => {
+              void handleImportJson();
+            }}
+            onRenameFolder={(old, next) => {
+              void handleRenameFolder(old, next);
+            }}
+            onMoveToFolder={(id, folder) => {
+              void handleMoveToFolder(id, folder);
+            }}
             sidebarHidden={sidebarHidden}
             onToggleSidebar={toggleSidebar}
             onShowLog={() => {
@@ -459,10 +467,18 @@ export default function App() {
             onImportSshConfig={() => {
               setShowImport(true);
             }}
-            onExportJson={() => { void handleExportJson(); }}
-            onImportJson={() => { void handleImportJson(); }}
-            onRenameFolder={(old, next) => { void handleRenameFolder(old, next); }}
-            onMoveToFolder={(id, folder) => { void handleMoveToFolder(id, folder); }}
+            onExportJson={() => {
+              void handleExportJson();
+            }}
+            onImportJson={() => {
+              void handleImportJson();
+            }}
+            onRenameFolder={(old, next) => {
+              void handleRenameFolder(old, next);
+            }}
+            onMoveToFolder={(id, folder) => {
+              void handleMoveToFolder(id, folder);
+            }}
             sidebarHidden={sidebarHidden}
             onToggleSidebar={toggleSidebar}
             onShowLog={() => {
@@ -1477,7 +1493,9 @@ function ConnectedApp({
           <ProcessMonitorPage
             host={result.host}
             username={result.username}
-            onClose={() => { setShowProcessMonitor(false); }}
+            onClose={() => {
+              setShowProcessMonitor(false);
+            }}
           />
         </ErrorBoundary>
       )}

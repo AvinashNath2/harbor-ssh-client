@@ -70,7 +70,9 @@ export function LargestItemsTable({
           {(["files", "folders"] as Kind[]).map((k) => (
             <button
               key={k}
-              onClick={() => { setKind(k); }}
+              onClick={() => {
+                setKind(k);
+              }}
               className={`px-4 py-1.5 text-[12px] font-medium transition-colors capitalize ${
                 kind === k
                   ? "bg-[rgba(47,107,219,0.10)] text-text-accent"
@@ -89,7 +91,9 @@ export function LargestItemsTable({
         <div className="flex-1" />
 
         <button
-          onClick={() => { onRefresh(root); }}
+          onClick={() => {
+            onRefresh(root);
+          }}
           disabled={loading}
           className="flex items-center gap-1.5 rounded-lg border border-border-input px-3 py-1.5 text-[12px] font-medium text-text-secondary hover:bg-surface-chip hover:text-text-primary disabled:opacity-50"
         >
@@ -127,20 +131,26 @@ export function LargestItemsTable({
                 </th>
                 <th
                   className="cursor-pointer px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint hover:text-text-primary"
-                  onClick={() => { toggleSort("path"); }}
+                  onClick={() => {
+                    toggleSort("path");
+                  }}
                 >
                   Path <SortIcon col="path" />
                 </th>
                 <th
                   className="cursor-pointer px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-widest text-text-faint hover:text-text-primary"
-                  onClick={() => { toggleSort("size_bytes"); }}
+                  onClick={() => {
+                    toggleSort("size_bytes");
+                  }}
                 >
                   Size <SortIcon col="size_bytes" />
                 </th>
                 {kind === "files" && (
                   <th
                     className="cursor-pointer px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-widest text-text-faint hover:text-text-primary"
-                    onClick={() => { toggleSort("modified"); }}
+                    onClick={() => {
+                      toggleSort("modified");
+                    }}
                   >
                     Modified <SortIcon col="modified" />
                   </th>
@@ -179,15 +189,15 @@ export function LargestItemsTable({
                     </td>
                     {kind === "files" && (
                       <td className="px-4 py-2 text-right text-[11px] text-text-faint">
-                        {item.modified
-                          ? new Date(item.modified * 1000).toLocaleDateString()
-                          : "—"}
+                        {item.modified ? new Date(item.modified * 1000).toLocaleDateString() : "—"}
                       </td>
                     )}
                     <td className="px-4 py-2">
                       {onBrowse && (
                         <button
-                          onClick={() => { onBrowse(dir); }}
+                          onClick={() => {
+                            onBrowse(dir);
+                          }}
                           className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-accent"
                           title={`Browse ${dir}`}
                         >

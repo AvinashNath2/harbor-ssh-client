@@ -127,8 +127,12 @@ function ForceKillModal({
       onConfirm();
       return;
     }
-    const t = setTimeout(() => { setCount((c) => c - 1); }, 1000);
-    return () => { clearTimeout(t); };
+    const t = setTimeout(() => {
+      setCount((c) => c - 1);
+    }, 1000);
+    return () => {
+      clearTimeout(t);
+    };
   }, [count, onConfirm]);
 
   useEffect(() => {
@@ -136,7 +140,9 @@ function ForceKillModal({
       if (e.key === "Escape") onCancel();
     };
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); };
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
   }, [onCancel]);
 
   return (
@@ -151,8 +157,7 @@ function ForceKillModal({
           <code className="rounded bg-surface-chip px-1.5 py-0.5 font-mono text-[11px] text-text-primary">
             SIGKILL
           </code>{" "}
-          to{" "}
-          <span className="font-semibold text-text-primary">{process.mainClass}</span> (PID{" "}
+          to <span className="font-semibold text-text-primary">{process.mainClass}</span> (PID{" "}
           {process.pid}). The process will be terminated immediately with no cleanup.
         </p>
         <div className="mt-4 rounded-[10px] border border-danger/20 bg-danger/5 px-4 py-2.5 font-mono text-[11.5px] text-text-secondary">
@@ -180,13 +185,7 @@ function ForceKillModal({
 
 // ── Process detail side panel ─────────────────────────────────────────────────
 
-function DetailPanel({
-  detail,
-  onClose,
-}: {
-  detail: ProcessDetail;
-  onClose: () => void;
-}) {
+function DetailPanel({ detail, onClose }: { detail: ProcessDetail; onClose: () => void }) {
   return (
     <div className="flex w-[380px] flex-shrink-0 flex-col border-l border-border bg-surface-pane">
       {/* Header */}
@@ -293,13 +292,7 @@ function DetailPanel({
 
 // ── Logs drawer ───────────────────────────────────────────────────────────────
 
-function LogsDrawer({
-  logs,
-  onClose,
-}: {
-  logs: ProcessLogEntry[];
-  onClose: () => void;
-}) {
+function LogsDrawer({ logs, onClose }: { logs: ProcessLogEntry[]; onClose: () => void }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -444,7 +437,9 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
           {([10, 30, 0] as const).map((v) => (
             <button
               key={v}
-              onClick={() => { setRefreshInterval(v); }}
+              onClick={() => {
+                setRefreshInterval(v);
+              }}
               className={`rounded-[6px] px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 refreshInterval === v
                   ? "bg-white text-text-primary shadow-sm"
@@ -462,11 +457,7 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
           disabled={state.loading || busy}
           className="flex items-center gap-1.5 rounded-input border border-border-input bg-surface-pane px-3 py-1.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
         >
-          <RefreshCw
-            size={12}
-            strokeWidth={2}
-            className={state.loading ? "animate-spin" : ""}
-          />
+          <RefreshCw size={12} strokeWidth={2} className={state.loading ? "animate-spin" : ""} />
           Refresh
         </button>
 
@@ -480,9 +471,7 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
       </div>
 
       {/* VM Memory bar */}
-      {state.vmMemory && (
-        <VmMemoryBar mem={state.vmMemory} processCount={state.processes.length} />
-      )}
+      {state.vmMemory && <VmMemoryBar mem={state.vmMemory} processCount={state.processes.length} />}
 
       {/* Body */}
       <div className="flex min-h-0 flex-1">
@@ -554,7 +543,11 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
                   {/* App name */}
                   <div className="flex min-w-0 items-center gap-1.5">
                     {isSelected ? (
-                      <ChevronRight size={12} strokeWidth={2.5} className="flex-shrink-0 text-text-accent" />
+                      <ChevronRight
+                        size={12}
+                        strokeWidth={2.5}
+                        className="flex-shrink-0 text-text-accent"
+                      />
                     ) : (
                       <Coffee size={11} strokeWidth={2} className="flex-shrink-0 text-orange-400" />
                     )}
@@ -585,9 +578,7 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
                   {/* Mem % with color coding */}
                   <span
                     className={`flex items-center gap-1 font-mono text-[11.5px] ${
-                      p.memPct > 60
-                        ? "font-semibold text-warning"
-                        : "text-text-secondary"
+                      p.memPct > 60 ? "font-semibold text-warning" : "text-text-secondary"
                     }`}
                   >
                     {p.memPct.toFixed(1)}
@@ -601,11 +592,15 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
                   {/* Action buttons */}
                   <div
                     className="flex items-center gap-1.5"
-                    onClick={(e) => { e.stopPropagation(); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
                   >
                     {/* Kill (SIGTERM) */}
                     <button
-                      onClick={() => { setKillConfirm(p); }}
+                      onClick={() => {
+                        setKillConfirm(p);
+                      }}
                       disabled={busy}
                       className="flex items-center gap-1 rounded-chip border border-danger/60 px-2 py-0.5 text-[10.5px] font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-40"
                       title="Graceful shutdown (SIGTERM)"
@@ -616,7 +611,9 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
 
                     {/* Force Kill (SIGKILL) */}
                     <button
-                      onClick={() => { setForceKillConfirm(p); }}
+                      onClick={() => {
+                        setForceKillConfirm(p);
+                      }}
                       disabled={busy}
                       className="flex items-center gap-1 rounded-chip bg-danger px-2 py-0.5 text-[10.5px] font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-40"
                       title="Force kill (SIGKILL)"
@@ -644,13 +641,20 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
 
         {/* Logs drawer */}
         {showLogs && (
-          <LogsDrawer logs={state.logs} onClose={() => { setShowLogs(false); }} />
+          <LogsDrawer
+            logs={state.logs}
+            onClose={() => {
+              setShowLogs(false);
+            }}
+          />
         )}
       </div>
 
       {/* Floating commands pill */}
       <button
-        onClick={() => { setShowLogs((v) => !v); }}
+        onClick={() => {
+          setShowLogs((v) => !v);
+        }}
         className="absolute bottom-4 right-4 z-50 flex items-center gap-1.5 rounded-chip border border-border-raised bg-surface-chip px-2.5 py-1 text-[11px] text-text-secondary shadow-sm transition-colors hover:bg-surface-hover"
       >
         <Terminal size={11} strokeWidth={2} />
@@ -664,7 +668,9 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
           message={`Send SIGTERM to PID ${killConfirm.pid.toString()} (${killConfirm.mainClass}). The process will have a chance to shut down gracefully.\n\nCommand: kill -15 ${killConfirm.pid.toString()}`}
           confirmLabel="Kill (SIGTERM)"
           onConfirm={() => void handleKillConfirmed()}
-          onCancel={() => { setKillConfirm(null); }}
+          onCancel={() => {
+            setKillConfirm(null);
+          }}
         />
       )}
 
@@ -672,7 +678,9 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
         <ForceKillModal
           process={forceKillConfirm}
           onConfirm={() => void handleForceKillConfirmed()}
-          onCancel={() => { setForceKillConfirm(null); }}
+          onCancel={() => {
+            setForceKillConfirm(null);
+          }}
         />
       )}
     </div>

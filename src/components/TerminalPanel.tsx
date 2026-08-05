@@ -2,7 +2,16 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { listen } from "@tauri-apps/api/event";
-import { ChevronDown, Clipboard, ClipboardPaste, Coffee, HardDrive, Key, Plus, X } from "lucide-react";
+import {
+  ChevronDown,
+  Clipboard,
+  ClipboardPaste,
+  Coffee,
+  HardDrive,
+  Key,
+  Plus,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   closeTerminal,

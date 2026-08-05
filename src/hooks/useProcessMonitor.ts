@@ -44,16 +44,13 @@ export function useProcessMonitor() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [refreshInterval, setRefreshInterval] = useState<10 | 30 | 0>(10);
 
-  const addLog = useCallback(
-    (entry: Omit<ProcessLogEntry, "id" | "ts">) => {
-      const log: ProcessLogEntry = { id: ++_logId, ts: Date.now(), ...entry };
-      setState((s) => ({
-        ...s,
-        logs: [...s.logs.slice(-(MAX_LOGS - 1)), log],
-      }));
-    },
-    [],
-  );
+  const addLog = useCallback((entry: Omit<ProcessLogEntry, "id" | "ts">) => {
+    const log: ProcessLogEntry = { id: ++_logId, ts: Date.now(), ...entry };
+    setState((s) => ({
+      ...s,
+      logs: [...s.logs.slice(-(MAX_LOGS - 1)), log],
+    }));
+  }, []);
 
   const refresh = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
@@ -65,10 +62,7 @@ export function useProcessMonitor() {
     });
 
     try {
-      const [processes, vmMemory] = await Promise.all([
-        processListJava(),
-        processVmMemory(),
-      ]);
+      const [processes, vmMemory] = await Promise.all([processListJava(), processVmMemory()]);
       const dur = Date.now() - t0;
       addLog({
         level: "info",

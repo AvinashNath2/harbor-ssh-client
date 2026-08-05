@@ -196,7 +196,7 @@ const DCS_RE = /\x1b[P^_X][^\x1b]*(?:\x1b\\|$)/g;
 // eslint-disable-next-line no-control-regex
 const SS3_RE = /\x1bO[A-Za-z]/g;
 // 8-bit C1 control codes (0x80–0x9F) emitted by Windows ConPTY as single bytes
- 
+
 const C1_RE = /[\x80-\x9f]/g;
 // Remaining: ESC + any single character (RIS, IND, RI, etc.)
 // eslint-disable-next-line no-control-regex

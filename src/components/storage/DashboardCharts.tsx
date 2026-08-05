@@ -21,9 +21,7 @@ interface CategoryDonutProps {
 
 export function CategoryDonut({ categories }: CategoryDonutProps) {
   if (categories.length === 0) {
-    return (
-      <EmptyChartState message="Run a Deep Scan to compute category breakdown" />
-    );
+    return <EmptyChartState message="Run a Deep Scan to compute category breakdown" />;
   }
 
   const total = categories.reduce((s, c) => s + c.bytes, 0);
@@ -241,11 +239,7 @@ export function PartitionsBar({ mounts }: PartitionsBarProps) {
         <Bar dataKey="used" stackId="a" radius={[0, 0, 0, 0]}>
           {data.map((d) => (
             // eslint-disable-next-line @typescript-eslint/no-deprecated
-            <Cell
-              key={d.name + "-used"}
-              fill={HEALTH_COLOR[d.tier]}
-              fillOpacity={0.8}
-            />
+            <Cell key={d.name + "-used"} fill={HEALTH_COLOR[d.tier]} fillOpacity={0.8} />
           ))}
         </Bar>
         <Bar dataKey="free" stackId="a" radius={[0, 4, 4, 0]}>

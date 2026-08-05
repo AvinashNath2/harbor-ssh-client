@@ -28,7 +28,6 @@ interface QueuedItem {
   start: () => Promise<void>;
 }
 
-
 export function useTransferQueue() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const queueRef = useRef<QueuedItem[]>([]);

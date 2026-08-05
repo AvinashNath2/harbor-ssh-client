@@ -27,14 +27,7 @@ import { StorageHeatmap } from "./storage/StorageHeatmap";
 import { StorageLogsDrawer } from "./storage/StorageLogsDrawer";
 import { StorageTree } from "./storage/StorageTree";
 
-type Tab =
-  | "dashboard"
-  | "explorer"
-  | "heatmap"
-  | "largest"
-  | "cleanup"
-  | "duplicates"
-  | "settings";
+type Tab = "dashboard" | "explorer" | "heatmap" | "largest" | "cleanup" | "duplicates" | "settings";
 
 const NAV_ITEMS: { id: Tab; label: string; icon: React.ReactNode; soon?: boolean }[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={15} /> },
@@ -100,18 +93,13 @@ export function StorageAnalyzerPage({
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-surface">
       {/* ── Top nav ─────────────────────────────────────────────────────────── */}
-      <div
-        className="flex flex-shrink-0 items-center gap-3 border-b border-border px-5 py-3 bg-surface-titlebar"
-      >
+      <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-5 py-3 bg-surface-titlebar">
         <div className="flex items-center gap-2">
           <HardDrive size={18} className="text-[#3f7be0]" />
           <span className="text-[14px] font-semibold text-text-primary">Data Profiler</span>
         </div>
 
-        <div
-          className="mx-2 h-4 w-px flex-shrink-0"
-          style={{ background: "#dedad3" }}
-        />
+        <div className="mx-2 h-4 w-px flex-shrink-0" style={{ background: "#dedad3" }} />
 
         {/* Server pill */}
         <div className="flex items-center gap-1.5 rounded-lg bg-surface-chip px-2.5 py-1">
@@ -203,9 +191,7 @@ export function StorageAnalyzerPage({
       {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1">
         {/* Sidebar */}
-        <aside
-          className="flex w-44 flex-shrink-0 flex-col border-r border-border py-3 bg-surface-sidebar"
-        >
+        <aside className="flex w-44 flex-shrink-0 flex-col border-r border-border py-3 bg-surface-sidebar">
           {NAV_ITEMS.map((item) => {
             const active = activeTab === item.id && !item.soon;
             return (
@@ -260,11 +246,7 @@ export function StorageAnalyzerPage({
           )}
 
           {activeTab === "heatmap" && (
-            <HeatmapTab
-              state={state}
-              totalBytes={totalBytes}
-              onBrowse={onBrowse}
-            />
+            <HeatmapTab state={state} totalBytes={totalBytes} onBrowse={onBrowse} />
           )}
 
           {activeTab === "largest" && (
@@ -303,21 +285,20 @@ export function StorageAnalyzerPage({
       </div>
 
       {/* ── Status bar ──────────────────────────────────────────────────────── */}
-      <div
-        className="flex flex-shrink-0 items-center gap-3 border-t border-border px-5 py-2 bg-surface-titlebar"
-      >
+      <div className="flex flex-shrink-0 items-center gap-3 border-t border-border px-5 py-2 bg-surface-titlebar">
         {state.deepScanning && (
           <div className="flex items-center gap-1.5">
             <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#3f7be0]" />
             <span className="text-[11.5px] text-text-accent">Deep scan running…</span>
           </div>
         )}
-        {(state.treeLoading || state.largestLoading || state.duplicatesLoading) && !state.deepScanning && (
-          <div className="flex items-center gap-1.5">
-            <Loader2 size={11} className="animate-spin text-text-faint" />
-            <span className="text-[11.5px] text-text-faint">Loading…</span>
-          </div>
-        )}
+        {(state.treeLoading || state.largestLoading || state.duplicatesLoading) &&
+          !state.deepScanning && (
+            <div className="flex items-center gap-1.5">
+              <Loader2 size={11} className="animate-spin text-text-faint" />
+              <span className="text-[11.5px] text-text-faint">Loading…</span>
+            </div>
+          )}
         {state.loading && !state.deepScanning && !state.treeLoading && !state.largestLoading && (
           <div className="flex items-center gap-1.5">
             <RefreshCw size={11} className="animate-spin text-text-faint" />
@@ -336,7 +317,9 @@ export function StorageAnalyzerPage({
 
       {/* ── Floating logs pill ───────────────────────────────────────────────── */}
       <button
-        onClick={() => { setShowLogs((v) => !v); }}
+        onClick={() => {
+          setShowLogs((v) => !v);
+        }}
         className="fixed bottom-10 right-4 z-50 flex items-center gap-1.5 rounded-full border border-border-raised bg-surface-pane px-3 py-1.5 shadow-lg transition-colors hover:bg-surface-chip"
         title="Toggle storage analyzer logs"
       >
@@ -347,7 +330,12 @@ export function StorageAnalyzerPage({
       </button>
 
       {showLogs && (
-        <StorageLogsDrawer logs={state.logs} onClose={() => { setShowLogs(false); }} />
+        <StorageLogsDrawer
+          logs={state.logs}
+          onClose={() => {
+            setShowLogs(false);
+          }}
+        />
       )}
     </div>
   );
@@ -391,10 +379,29 @@ function DashboardTab({
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
-            <KpiCard label="Total Disk" value={formatBytes(totalBytes)} icon={<HardDrive size={14} />} />
-            <KpiCard label="Used" value={formatBytes(usedBytes)} color={tierColor} icon={<Database size={14} />} />
-            <KpiCard label="Free" value={formatBytes(freeBytes)} color="#22c55e" icon={<HardDrive size={14} />} />
-            <KpiCard label="Use %" value={`${usePct.toFixed(1)}%`} color={tierColor} icon={<Activity size={14} />} />
+            <KpiCard
+              label="Total Disk"
+              value={formatBytes(totalBytes)}
+              icon={<HardDrive size={14} />}
+            />
+            <KpiCard
+              label="Used"
+              value={formatBytes(usedBytes)}
+              color={tierColor}
+              icon={<Database size={14} />}
+            />
+            <KpiCard
+              label="Free"
+              value={formatBytes(freeBytes)}
+              color="#22c55e"
+              icon={<HardDrive size={14} />}
+            />
+            <KpiCard
+              label="Use %"
+              value={`${usePct.toFixed(1)}%`}
+              color={tierColor}
+              icon={<Activity size={14} />}
+            />
             <KpiCard
               label="Total Files"
               value={totalFileCount !== null ? totalFileCount.toLocaleString() : "—"}
@@ -424,8 +431,7 @@ function DashboardTab({
                 File-age histogram not yet available.
               </p>
               <p className="text-[11.5px] text-text-faint">
-                Click{" "}
-                <span className="font-semibold text-text-accent">Deep Scan</span> to run{" "}
+                Click <span className="font-semibold text-text-accent">Deep Scan</span> to run{" "}
                 <code className="rounded bg-surface-chip px-1 text-[10.5px]">
                   find / -printf &apos;%T@ %s&apos;
                 </code>{" "}
@@ -468,11 +474,19 @@ function DashboardTab({
                       className="border-b transition-colors hover:bg-surface-chip"
                       style={{ borderColor: "#e5e2db" }}
                     >
-                      <td className="px-4 py-2.5 font-mono font-medium text-text-primary">{m.mount}</td>
+                      <td className="px-4 py-2.5 font-mono font-medium text-text-primary">
+                        {m.mount}
+                      </td>
                       <td className="px-4 py-2.5 text-text-secondary">{m.fs}</td>
-                      <td className="px-4 py-2.5 text-right text-text-secondary">{formatBytes(m.used)}</td>
-                      <td className="px-4 py-2.5 text-right text-text-secondary">{formatBytes(m.avail)}</td>
-                      <td className="px-4 py-2.5 text-right text-text-secondary">{formatBytes(m.total)}</td>
+                      <td className="px-4 py-2.5 text-right text-text-secondary">
+                        {formatBytes(m.used)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-text-secondary">
+                        {formatBytes(m.avail)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-text-secondary">
+                        {formatBytes(m.total)}
+                      </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
                           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-chip">
@@ -515,16 +529,23 @@ function DashboardTab({
                   className="border-b text-left"
                   style={{ borderColor: "#dedad3", background: "#ece9e3" }}
                 >
-                  <th className="px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">Path</th>
-                  <th className="px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">Size</th>
-                  <th className="w-48 px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">Share</th>
+                  <th className="px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">
+                    Path
+                  </th>
+                  <th className="px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">
+                    Size
+                  </th>
+                  <th className="w-48 px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">
+                    Share
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {state.rootFolders.slice(0, 20).map((f) => {
-                  const ratio = state.rootFolders.length > 0
-                    ? f.size_bytes / (state.rootFolders[0]?.size_bytes || 1)
-                    : 0;
+                  const ratio =
+                    state.rootFolders.length > 0
+                      ? f.size_bytes / (state.rootFolders[0]?.size_bytes || 1)
+                      : 0;
                   return (
                     <tr
                       key={f.path}
@@ -532,7 +553,9 @@ function DashboardTab({
                       style={{ borderColor: "#e5e2db" }}
                     >
                       <td className="px-4 py-2.5 font-mono text-text-primary">{f.path}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-text-secondary">{formatBytes(f.size_bytes)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-text-secondary">
+                        {formatBytes(f.size_bytes)}
+                      </td>
                       <td className="px-4 py-2.5">
                         <div className="h-1.5 overflow-hidden rounded-full bg-surface-chip">
                           <div
@@ -642,22 +665,20 @@ function ExplorerTab({ state, totalBytes, onExpand, onCollapse, onLoadRoot }: Ex
       </div>
 
       {/* Column headers */}
-      <div
-        className="flex items-center gap-2 border-b border-border px-3 pb-2 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint"
-      >
+      <div className="flex items-center gap-2 border-b border-border px-3 pb-2 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">
         <span className="flex-1">Path</span>
         <span className="w-24 text-right">Share</span>
         <span className="w-20 text-right">Size</span>
       </div>
 
       {/* Tree */}
-      <div
-        className="overflow-hidden rounded-xl border border-border-raised bg-surface-pane"
-      >
+      <div className="overflow-hidden rounded-xl border border-border-raised bg-surface-pane">
         <StorageTree
           root={state.treeRoot}
           totalBytes={diskTotal}
-          onExpand={(path) => { onExpand(path); }}
+          onExpand={(path) => {
+            onExpand(path);
+          }}
           onCollapse={onCollapse}
         />
       </div>

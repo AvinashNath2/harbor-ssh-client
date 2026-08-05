@@ -1,10 +1,10 @@
 // Health thresholds — editable in Settings tab (Phase 4).
 // Values are percentage thresholds for disk-mount fullness.
 export interface StorageThresholds {
-  mountWarn: number;   // orange starts here
+  mountWarn: number; // orange starts here
   mountDanger: number; // red starts here
-  mountCrit: number;   // critical starts here
-  folderWarn: number;  // folder ratio warn
+  mountCrit: number; // critical starts here
+  folderWarn: number; // folder ratio warn
   folderDanger: number;
   folderCrit: number;
 }

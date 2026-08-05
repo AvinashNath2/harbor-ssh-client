@@ -60,7 +60,10 @@ export function SettingsTab() {
       </div>
 
       {/* Mount fullness thresholds */}
-      <Section title="Disk Mount Health Thresholds" description="Triggered by % used on each mounted filesystem (df)">
+      <Section
+        title="Disk Mount Health Thresholds"
+        description="Triggered by % used on each mounted filesystem (df)"
+      >
         <ThresholdRow
           label="Warning"
           color="#f59e0b"
@@ -68,7 +71,9 @@ export function SettingsTab() {
           unit="%"
           min={50}
           max={94}
-          onChange={(v) => { set("mountWarn", v); }}
+          onChange={(v) => {
+            set("mountWarn", v);
+          }}
         />
         <ThresholdRow
           label="Danger"
@@ -77,7 +82,9 @@ export function SettingsTab() {
           unit="%"
           min={51}
           max={94}
-          onChange={(v) => { set("mountDanger", v); }}
+          onChange={(v) => {
+            set("mountDanger", v);
+          }}
         />
         <ThresholdRow
           label="Critical"
@@ -86,12 +93,17 @@ export function SettingsTab() {
           unit="%"
           min={52}
           max={99}
-          onChange={(v) => { set("mountCrit", v); }}
+          onChange={(v) => {
+            set("mountCrit", v);
+          }}
         />
       </Section>
 
       {/* Folder share thresholds */}
-      <Section title="Folder Size Share Thresholds" description="Triggered by a folder's % of total disk (treemap & explorer)">
+      <Section
+        title="Folder Size Share Thresholds"
+        description="Triggered by a folder's % of total disk (treemap & explorer)"
+      >
         <ThresholdRow
           label="Warning"
           color="#f59e0b"
@@ -99,7 +111,9 @@ export function SettingsTab() {
           unit="% of disk"
           min={1}
           max={39}
-          onChange={(v) => { set("folderWarn", v); }}
+          onChange={(v) => {
+            set("folderWarn", v);
+          }}
         />
         <ThresholdRow
           label="Danger"
@@ -108,7 +122,9 @@ export function SettingsTab() {
           unit="% of disk"
           min={2}
           max={39}
-          onChange={(v) => { set("folderDanger", v); }}
+          onChange={(v) => {
+            set("folderDanger", v);
+          }}
         />
         <ThresholdRow
           label="Critical"
@@ -117,7 +133,9 @@ export function SettingsTab() {
           unit="% of disk"
           min={3}
           max={90}
-          onChange={(v) => { set("folderCrit", v); }}
+          onChange={(v) => {
+            set("folderCrit", v);
+          }}
         />
       </Section>
 
@@ -138,9 +156,7 @@ export function SettingsTab() {
           Reset to Defaults
         </button>
         {saved && (
-          <span className="text-[12px] text-green-400">
-            Saved — reopen the analyzer to apply
-          </span>
+          <span className="text-[12px] text-green-400">Saved — reopen the analyzer to apply</span>
         )}
       </div>
     </div>
@@ -159,9 +175,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className="rounded-xl border border-border bg-surface-pane p-5"
-    >
+    <div className="rounded-xl border border-border bg-surface-pane p-5">
       <h3 className="text-[12.5px] font-semibold text-text-primary">{title}</h3>
       <p className="mb-4 mt-0.5 text-[11px] text-text-faint">{description}</p>
       <div className="flex flex-col gap-3">{children}</div>
@@ -197,7 +211,9 @@ function ThresholdRow({
         min={min}
         max={max}
         value={value}
-        onChange={(e) => { onChange(Number(e.target.value)); }}
+        onChange={(e) => {
+          onChange(Number(e.target.value));
+        }}
         className="flex-1 accent-[#3f7be0]"
       />
       <div className="w-24 text-right">

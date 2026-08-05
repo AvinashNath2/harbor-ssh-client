@@ -64,9 +64,7 @@ function CommandText({ raw, source }: { raw: string; source: CommandRecord["sour
   if (source === "terminal") {
     const spaceIdx = raw.indexOf(" ");
     if (spaceIdx === -1) {
-      return (
-        <span className="font-mono text-[13px] font-bold text-text-heading">$ {raw}</span>
-      );
+      return <span className="font-mono text-[13px] font-bold text-text-heading">$ {raw}</span>;
     }
     const cmd = raw.slice(0, spaceIdx);
     const args = raw.slice(spaceIdx);
@@ -206,7 +204,8 @@ function CommandCard({ cmd }: { cmd: CommandRecord }) {
               {/* Display-time line cap notice */}
               {isDisplayLong && (
                 <div className="mt-2 font-mono text-[10.5px] text-[#e0a53c]">
-                  [{hiddenLineCount.toLocaleString()} more lines hidden — use Export to see full output]
+                  [{hiddenLineCount.toLocaleString()} more lines hidden — use Export to see full
+                  output]
                 </div>
               )}
               {/* Storage truncation notice */}

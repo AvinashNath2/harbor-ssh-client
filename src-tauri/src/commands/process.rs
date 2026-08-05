@@ -219,9 +219,7 @@ pub async fn process_detail(
 }
 
 #[tauri::command]
-pub async fn process_vm_memory(
-    state: tauri::State<'_, SshState>,
-) -> Result<VmMemory, AppError> {
+pub async fn process_vm_memory(state: tauri::State<'_, SshState>) -> Result<VmMemory, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
         let guard = ssh

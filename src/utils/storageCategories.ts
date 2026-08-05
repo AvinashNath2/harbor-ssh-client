@@ -36,7 +36,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Databases: "#8b5cf6",
   Logs: "#f59e0b",
   Cache: "#6366f1",
-  "Temporary": "#94a3b8",
+  Temporary: "#94a3b8",
   "System Libs": "#64748b",
   "User Files": "#22c55e",
   Applications: "#3b82f6",
@@ -75,7 +75,5 @@ export function computeCategories(sizes: FolderSize[]): CategoryBucket[] {
     b.paths.push(entry.path);
   }
 
-  return [...buckets.values()]
-    .filter((b) => b.bytes > 0)
-    .sort((a, b) => b.bytes - a.bytes);
+  return [...buckets.values()].filter((b) => b.bytes > 0).sort((a, b) => b.bytes - a.bytes);
 }

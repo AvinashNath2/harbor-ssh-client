@@ -41,8 +41,12 @@ export function StaleListingBanner({
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const id = window.setInterval(() => { setNow(Date.now()); }, 1000);
-    return () => { clearInterval(id); };
+    const id = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(id);
+    };
   }, []);
 
   const elapsedMs = refreshStartedAt != null ? now - refreshStartedAt : 0;

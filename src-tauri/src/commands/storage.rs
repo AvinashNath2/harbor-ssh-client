@@ -230,7 +230,8 @@ pub async fn storage_age_histogram(
 
         // -xdev stays on the same filesystem; head -c 4 MB caps output and forces
         // SIGPIPE to find faster than a line count does.
-        let inner = format!("find {path} -xdev -type f -printf '%T@ %s\\n' 2>/dev/null | head -c 4194304");
+        let inner =
+            format!("find {path} -xdev -type f -printf '%T@ %s\\n' 2>/dev/null | head -c 4194304");
         let cmd = throttle(&inner, 120);
         let output = bundle.exec(&cmd)?;
 

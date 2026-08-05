@@ -75,7 +75,9 @@ export function StorageHeatmap({ folders, totalBytes, onBrowse }: StorageHeatmap
             y: e.clientY,
           });
         }}
-        onMouseLeave={() => { setHover(null); }}
+        onMouseLeave={() => {
+          setHover(null);
+        }}
         onClick={() => {
           if (onBrowse && fullPath) onBrowse(fullPath);
         }}
@@ -107,7 +109,9 @@ export function StorageHeatmap({ folders, totalBytes, onBrowse }: StorageHeatmap
               pointerEvents: "none",
             }}
           >
-            {name.length > Math.floor(width / 9) ? name.slice(0, Math.floor(width / 9)) + "…" : name}
+            {name.length > Math.floor(width / 9)
+              ? name.slice(0, Math.floor(width / 9)) + "…"
+              : name}
           </text>
         )}
         {showSubLabel && (
@@ -145,7 +149,13 @@ export function StorageHeatmap({ folders, totalBytes, onBrowse }: StorageHeatmap
               }}
             />
             <span>
-              {tier === "ok" ? "<5%" : tier === "warn" ? "5–15%" : tier === "danger" ? "15–40%" : ">40%"}{" "}
+              {tier === "ok"
+                ? "<5%"
+                : tier === "warn"
+                  ? "5–15%"
+                  : tier === "danger"
+                    ? "15–40%"
+                    : ">40%"}{" "}
               of disk
             </span>
           </div>
@@ -154,7 +164,10 @@ export function StorageHeatmap({ folders, totalBytes, onBrowse }: StorageHeatmap
       </div>
 
       {/* Treemap */}
-      <div className="rounded-xl border border-border-raised overflow-hidden" style={{ height: 480 }}>
+      <div
+        className="rounded-xl border border-border-raised overflow-hidden"
+        style={{ height: 480 }}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <Treemap
             data={data}
@@ -177,9 +190,7 @@ export function StorageHeatmap({ folders, totalBytes, onBrowse }: StorageHeatmap
           <p className="text-text-secondary">
             {formatBytes(hover.size)} — {hover.pct.toFixed(1)}% of disk
           </p>
-          {onBrowse && (
-            <p className="mt-0.5 text-[10.5px] text-text-accent">Click to browse</p>
-          )}
+          {onBrowse && <p className="mt-0.5 text-[10.5px] text-text-accent">Click to browse</p>}
         </div>
       )}
     </div>

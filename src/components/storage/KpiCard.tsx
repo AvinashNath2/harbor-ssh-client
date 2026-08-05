@@ -28,9 +28,7 @@ export function KpiCard({ label, value, sub, color, icon }: KpiCardProps) {
       >
         {value}
       </span>
-      {sub && (
-        <span className="truncate text-[11.5px] text-text-secondary">{sub}</span>
-      )}
+      {sub && <span className="truncate text-[11.5px] text-text-secondary">{sub}</span>}
     </div>
   );
 }

@@ -57,7 +57,9 @@ export function StorageLogsDrawer({ logs, onClose }: StorageLogsDrawerProps) {
         {(["all", "info", "warn", "error"] as const).map((lvl) => (
           <button
             key={lvl}
-            onClick={() => { setFilter(lvl); }}
+            onClick={() => {
+              setFilter(lvl);
+            }}
             className={`rounded px-2 py-0.5 text-[11.5px] font-medium transition-colors ${
               filter === lvl
                 ? "bg-surface-chip text-text-primary"
@@ -70,7 +72,9 @@ export function StorageLogsDrawer({ logs, onClose }: StorageLogsDrawerProps) {
         {sources.length > 1 && (
           <select
             value={sourceFilter}
-            onChange={(e) => { setSourceFilter(e.target.value); }}
+            onChange={(e) => {
+              setSourceFilter(e.target.value);
+            }}
             className="ml-auto rounded border border-border-input bg-surface px-2 py-0.5 text-[11.5px] text-text-secondary focus:outline-none"
           >
             <option value="">All sources</option>

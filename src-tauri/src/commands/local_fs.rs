@@ -79,10 +79,7 @@ pub fn delete_local_path(path: String) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-pub async fn export_profiles_json(
-    json: String,
-    app: tauri::AppHandle,
-) -> Result<bool, AppError> {
+pub async fn export_profiles_json(json: String, app: tauri::AppHandle) -> Result<bool, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let file_path = app
             .dialog()

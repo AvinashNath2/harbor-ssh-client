@@ -204,7 +204,6 @@ export function extractCodeBlocks(
   return out;
 }
 
-
 interface OllamaChatChunk {
   model?: string;
   message?: { role: string; content: string };

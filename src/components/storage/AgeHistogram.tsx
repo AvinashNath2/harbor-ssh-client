@@ -54,13 +54,8 @@ export function AgeHistogramBar({ data }: AgeHistogramProps) {
       <div className="flex flex-wrap gap-x-4 gap-y-1.5">
         {buckets.map((b) => (
           <div key={b.key} className="flex items-center gap-1.5">
-            <div
-              className="h-2.5 w-2.5 flex-shrink-0 rounded-sm"
-              style={{ background: b.color }}
-            />
-            <span className="text-[11.5px] text-text-secondary">
-              {b.label}
-            </span>
+            <div className="h-2.5 w-2.5 flex-shrink-0 rounded-sm" style={{ background: b.color }} />
+            <span className="text-[11.5px] text-text-secondary">{b.label}</span>
             <span className="text-[11.5px] font-medium text-text-primary">
               {formatBytes(b.bytes)}
             </span>

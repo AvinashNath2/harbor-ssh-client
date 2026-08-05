@@ -68,9 +68,7 @@ export function InlineBanner({ variant = "info", title, description, icon }: Inl
   const isLoading = variant === "loading";
 
   return (
-    <div
-      className={`flex flex-none items-center gap-2 border-b px-3.5 py-1.5 ${s.bg} ${s.border}`}
-    >
+    <div className={`flex flex-none items-center gap-2 border-b px-3.5 py-1.5 ${s.bg} ${s.border}`}>
       {icon ?? (
         <s.DefaultIcon
           size={13}

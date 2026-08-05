@@ -16,10 +16,7 @@ export function DuplicatesTab({ duplicates, loading, onScan, onBrowse }: Duplica
   const [maxDepth, setMaxDepth] = useState(5);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const totalRecoverable = duplicates.reduce(
-    (s, g) => s + g.size_bytes * (g.files.length - 1),
-    0,
-  );
+  const totalRecoverable = duplicates.reduce((s, g) => s + g.size_bytes * (g.files.length - 1), 0);
 
   const toggleGroup = (hash: string) => {
     setExpanded((e) => ({ ...e, [hash]: !e[hash] }));
@@ -28,9 +25,7 @@ export function DuplicatesTab({ duplicates, loading, onScan, onBrowse }: Duplica
   return (
     <div className="flex flex-col gap-5">
       {/* Search form */}
-      <div
-        className="rounded-xl border border-border bg-surface-pane p-5"
-      >
+      <div className="rounded-xl border border-border bg-surface-pane p-5">
         <h3 className="mb-4 text-[12px] font-semibold uppercase tracking-widest text-text-faint">
           Duplicate Scanner
         </h3>
@@ -42,7 +37,9 @@ export function DuplicatesTab({ duplicates, loading, onScan, onBrowse }: Duplica
             <input
               type="text"
               value={root}
-              onChange={(e) => { setRoot(e.target.value); }}
+              onChange={(e) => {
+                setRoot(e.target.value);
+              }}
               className="w-full rounded-lg border border-border-input bg-surface-chip px-3 py-2 font-mono text-[12.5px] text-text-primary outline-none focus:border-[#3f7be0]"
               placeholder="/home"
             />
@@ -58,7 +55,9 @@ export function DuplicatesTab({ duplicates, loading, onScan, onBrowse }: Duplica
                 value={minMb}
                 min={1}
                 max={1000}
-                onChange={(e) => { setMinMb(Math.max(1, Number(e.target.value))); }}
+                onChange={(e) => {
+                  setMinMb(Math.max(1, Number(e.target.value)));
+                }}
                 className="w-full rounded-lg border border-border-input bg-surface-chip px-3 py-2 text-[12.5px] text-text-primary outline-none focus:border-[#3f7be0]"
               />
               <span className="text-[12px] text-text-faint">MB</span>
@@ -74,22 +73,22 @@ export function DuplicatesTab({ duplicates, loading, onScan, onBrowse }: Duplica
               value={maxDepth}
               min={1}
               max={10}
-              onChange={(e) => { setMaxDepth(Math.max(1, Math.min(10, Number(e.target.value)))); }}
+              onChange={(e) => {
+                setMaxDepth(Math.max(1, Math.min(10, Number(e.target.value))));
+              }}
               className="w-full rounded-lg border border-border-input bg-surface-chip px-3 py-2 text-[12.5px] text-text-primary outline-none focus:border-[#3f7be0]"
             />
           </div>
 
           <button
-            onClick={() => { onScan(root, minMb * 1_048_576, maxDepth); }}
+            onClick={() => {
+              onScan(root, minMb * 1_048_576, maxDepth);
+            }}
             disabled={loading || !root.trim()}
             className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             style={{ background: "linear-gradient(135deg,#3f7be0,#2f6bdb)" }}
           >
-            {loading ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Search size={13} />
-            )}
+            {loading ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
             Find Duplicates
           </button>
         </div>
@@ -136,14 +135,12 @@ export function DuplicatesTab({ duplicates, loading, onScan, onBrowse }: Duplica
               const isOpen = expanded[group.hash] ?? false;
               const recoverable = group.size_bytes * (group.files.length - 1);
               return (
-                <div
-                  key={group.hash}
-                  className="border-b"
-                  style={{ borderColor: "#e5e2db" }}
-                >
+                <div key={group.hash} className="border-b" style={{ borderColor: "#e5e2db" }}>
                   {/* Group header */}
                   <button
-                    onClick={() => { toggleGroup(group.hash); }}
+                    onClick={() => {
+                      toggleGroup(group.hash);
+                    }}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-chip"
                   >
                     <span className="w-6 flex-shrink-0 text-center text-[11px] font-semibold text-text-faint">
@@ -174,10 +171,7 @@ export function DuplicatesTab({ duplicates, loading, onScan, onBrowse }: Duplica
 
                   {/* Expanded file list */}
                   {isOpen && (
-                    <div
-                      className="border-t bg-surface"
-                      style={{ borderColor: "#e5e2db" }}
-                    >
+                    <div className="border-t bg-surface" style={{ borderColor: "#e5e2db" }}>
                       {group.files.map((file, fi) => (
                         <div
                           key={file.path}
@@ -200,7 +194,9 @@ export function DuplicatesTab({ duplicates, loading, onScan, onBrowse }: Duplica
                           )}
                           {onBrowse && (
                             <button
-                              onClick={() => { onBrowse(file.path.replace(/\/[^/]+$/, "") || "/"); }}
+                              onClick={() => {
+                                onBrowse(file.path.replace(/\/[^/]+$/, "") || "/");
+                              }}
                               className="flex-shrink-0 rounded px-1.5 py-0.5 text-[10.5px] text-text-accent hover:bg-[rgba(47,107,219,0.10)]"
                             >
                               Browse
