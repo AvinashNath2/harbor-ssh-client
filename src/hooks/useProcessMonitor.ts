@@ -143,8 +143,12 @@ export function useProcessMonitor() {
         addLog({
           level: "info",
           source: "kill",
-          message: `PID ${pid.toString()} killed (${force ? "SIGKILL" : "SIGTERM"})`,
+          message: `PID ${pid.toString()} signalled (${force ? "SIGKILL" : "SIGTERM"}) — waiting for exit…`,
           durationMs: Date.now() - t0,
+        });
+        // Give the process time to handle the signal before re-listing
+        await new Promise<void>((r) => {
+          setTimeout(r, force ? 800 : 2000);
         });
         await refresh();
         return true;

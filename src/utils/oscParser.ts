@@ -223,9 +223,9 @@ export function stripAnsiForCapture(raw: string): string {
 }
 
 /**
- * Append PTY text to a line buffer using terminal semantics: `\r` overwrites
- * the current line, `\n` commits it. Avoids spinner/progress `\r` noise
- * becoming hundreds of fake log lines.
+ * Append PTY text to a line buffer using terminal semantics.
+ * \r\n (SSH PTY standard line ending) commits the current line.
+ * Lone \r (spinner/progress overwrite) resets it without committing.
  */
 export function appendTerminalCapture(
   text: string,
@@ -233,14 +233,25 @@ export function appendTerminalCapture(
   state: { currentLine: string },
 ): void {
   const cleaned = stripAnsiForCapture(text);
-  for (const c of cleaned) {
-    if (c === "\n") {
+  let i = 0;
+  while (i < cleaned.length) {
+    const c = cleaned[i];
+    if (c === "\r" && i + 1 < cleaned.length && cleaned[i + 1] === "\n") {
+      // \r\n — standard SSH PTY line ending: commit current line
       lines.push(state.currentLine);
       state.currentLine = "";
-    } else if (c === "\r") {
+      i += 2;
+    } else if (c === "\n") {
+      lines.push(state.currentLine);
       state.currentLine = "";
+      i++;
+    } else if (c === "\r") {
+      // lone \r — spinner/progress overwrite: reset without committing
+      state.currentLine = "";
+      i++;
     } else {
       state.currentLine += c;
+      i++;
     }
   }
 }

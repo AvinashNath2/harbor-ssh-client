@@ -277,9 +277,18 @@ pub async fn process_kill(
         let out = bundle
             .exec(&format!("kill -{sig} {pid} 2>&1"))
             .unwrap_or_default();
+        let out = out.trim();
 
         if out.contains("No such process") {
             return Err(AppError::internal(format!("Process {pid} not found")));
+        }
+        if out.contains("Operation not permitted") || out.contains("not permitted") {
+            return Err(AppError::internal(format!(
+                "Permission denied — cannot signal PID {pid}. The process may be owned by a different user."
+            )));
+        }
+        if !out.is_empty() {
+            return Err(AppError::internal(format!("kill: {out}")));
         }
 
         Ok(())
