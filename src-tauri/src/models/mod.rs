@@ -186,6 +186,10 @@ pub struct ConnectionProfile {
     pub saved_password: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub saved_key_passphrase: Option<String>,
+    /// Folder the file browser jumps to right after connect. Falls back to
+    /// the SSH user's home directory when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_path: Option<String>,
 }
 
 // ── Filesystem types (Phase 2) ────────────────────────────────────────────────

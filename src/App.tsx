@@ -213,6 +213,19 @@ export default function App() {
     await save({ ...profile, favorite: !profile.favorite });
   }
 
+  // Toggle whether `currentPath` is the profile's default landing folder.
+  // If it's already the pinned path, unpin. Otherwise pin it.
+  async function handleTogglePinnedPath(currentPath: string) {
+    if (!activeProfile) return;
+    const isCurrentlyPinned = activeProfile.defaultPath === currentPath;
+    const next: ConnectionProfile = {
+      ...activeProfile,
+      defaultPath: isCurrentlyPinned ? undefined : currentPath,
+    };
+    setActiveProfile(next);
+    await save(next);
+  }
+
   async function handleImportProfiles(imported: ConnectionProfile[]) {
     for (const p of imported) await save(p);
     setShowImport(false);
@@ -420,6 +433,9 @@ export default function App() {
             }}
             onMoveToFolder={(id, folder) => {
               void handleMoveToFolder(id, folder);
+            }}
+            onTogglePinnedPath={(path) => {
+              void handleTogglePinnedPath(path);
             }}
             sidebarHidden={sidebarHidden}
             onToggleSidebar={toggleSidebar}
@@ -652,6 +668,7 @@ interface ConnectedAppProps {
   onImportJson: () => void;
   onRenameFolder: (oldName: string, newName: string) => void;
   onMoveToFolder: (profileId: string, newFolder: string) => void;
+  onTogglePinnedPath: (currentPath: string) => void;
   sidebarHidden: boolean;
   onToggleSidebar: (next: boolean) => void;
 }
@@ -675,6 +692,7 @@ function ConnectedApp({
   onImportJson,
   onRenameFolder,
   onMoveToFolder,
+  onTogglePinnedPath,
   sidebarHidden,
   onToggleSidebar,
 }: ConnectedAppProps) {
@@ -692,19 +710,24 @@ function ConnectedApp({
     closeTab,
     reload,
     invalidatePathCache,
-  } = useTabs(result.homeDir, activeProfile?.name ?? result.host, onConnectionLost, {
-    cacheScope: makeRemoteCacheScope(result.host, result.username),
-    onFreshEntries: (entries) => {
-      const valid = new Set(entries.map((e) => e.path));
-      setSelected((prev) => {
-        const next = new Set([...prev].filter((p) => valid.has(p)));
-        return next.size === prev.size ? prev : next;
-      });
+  } = useTabs(
+    activeProfile?.defaultPath ?? result.homeDir,
+    activeProfile?.name ?? result.host,
+    onConnectionLost,
+    {
+      cacheScope: makeRemoteCacheScope(result.host, result.username),
+      onFreshEntries: (entries) => {
+        const valid = new Set(entries.map((e) => e.path));
+        setSelected((prev) => {
+          const next = new Set([...prev].filter((p) => valid.has(p)));
+          return next.size === prev.size ? prev : next;
+        });
+      },
+      onRefreshFailed: (message) => {
+        setRefreshToast(`Could not refresh folder: ${message}`);
+      },
     },
-    onRefreshFailed: (message) => {
-      setRefreshToast(`Could not refresh folder: ${message}`);
-    },
-  });
+  );
 
   // Phase 4 — Local filesystem
   const localFiles = useLocalFiles();
@@ -1058,6 +1081,12 @@ function ConnectedApp({
         showChat={showChat}
         onToggleChat={() => {
           toggleChat();
+        }}
+        currentPath={activeTab.path}
+        pinnedPath={activeProfile?.defaultPath}
+        canPin={!!activeProfile}
+        onTogglePinnedPath={() => {
+          onTogglePinnedPath(activeTab.path);
         }}
       />
 

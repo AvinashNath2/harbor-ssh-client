@@ -108,6 +108,8 @@ export interface ConnectionProfile {
   savedPassword?: string;
   /** Stored passphrase for encrypted private keys. */
   savedKeyPassphrase?: string;
+  /** Folder the file browser lands in after connect. Falls back to home dir when unset. */
+  defaultPath?: string;
 }
 
 export async function listProfiles(): Promise<ConnectionProfile[]> {

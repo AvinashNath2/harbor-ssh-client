@@ -14,6 +14,8 @@ import {
   LogOut,
   MessageSquare,
   PanelBottom,
+  Pin,
+  PinOff,
   RefreshCw,
   SplitSquareHorizontal,
   Trash2,
@@ -50,6 +52,10 @@ interface ToolbarProps {
   onToggleTunnels: () => void;
   onToggleDocker: () => void;
   onToggleChat: () => void;
+  currentPath: string;
+  pinnedPath?: string;
+  canPin: boolean;
+  onTogglePinnedPath: () => void;
 }
 
 const ICON_SIZE = 16;
@@ -80,8 +86,20 @@ export function Toolbar({
   onToggleTunnels,
   onToggleDocker,
   onToggleChat,
+  currentPath,
+  pinnedPath,
+  canPin,
+  onTogglePinnedPath,
 }: ToolbarProps) {
   const hasSelection = selected.size > 0;
+  const isPinnedHere = !!pinnedPath && pinnedPath === currentPath;
+  const pinTitle = !canPin
+    ? "Save this connection as a profile to pin a landing folder"
+    : isPinnedHere
+      ? "This folder is your default landing folder on connect — click to unpin"
+      : pinnedPath
+        ? `Pin as landing folder (currently: ${pinnedPath})`
+        : "Pin this folder as the default landing folder on connect";
 
   return (
     <div className="flex h-10 flex-none items-center gap-1 border-b border-border-raised bg-surface-toolbar px-3">
@@ -149,6 +167,27 @@ export function Toolbar({
           <Trash2 size={ICON_SIZE} strokeWidth={ICON_STROKE} />
         </ToolBtn>
       </div>
+
+      {/* Divider */}
+      <div className="mx-1 h-4 w-px bg-border" />
+
+      {/* Pin current folder as default landing folder for this connection */}
+      <button
+        onClick={onTogglePinnedPath}
+        disabled={!canPin}
+        title={pinTitle}
+        className={`flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+          isPinnedHere
+            ? "bg-accent/[0.12] text-accent-dark hover:bg-accent/[0.18]"
+            : "text-text-tertiary hover:bg-surface-chip hover:text-text-primary"
+        }`}
+      >
+        {isPinnedHere ? (
+          <Pin size={ICON_SIZE} strokeWidth={ICON_STROKE} fill="currentColor" />
+        ) : (
+          <PinOff size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+        )}
+      </button>
 
       {busy && (
         <div className="flex items-center gap-1.5 rounded-[7px] border border-accent-dark/30 bg-accent/10 px-2.5 py-1">
