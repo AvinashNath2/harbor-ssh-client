@@ -9,7 +9,7 @@ import { CodeMirrorEditor, type CodeMirrorHandle } from "./CodeMirrorEditor";
 import { UnviewableFileCard, type UnviewableReason } from "./UnviewableFileCard";
 
 /** Max bytes we ever fetch for a preview. Matches SFTP_PREVIEW_CAP_BYTES in Rust. */
-const PREVIEW_CAP_BYTES = 2 * 1024 * 1024;
+const PREVIEW_CAP_BYTES = 10 * 1024 * 1024;
 /** Above this file size we warn the user before starting the fetch. */
 const HUGE_FILE_THRESHOLD = 50 * 1024 * 1024;
 /** How much of the file we ship into the session-log record (cheap storage). */

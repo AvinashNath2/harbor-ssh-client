@@ -7,7 +7,7 @@ pub const SSH_KEEPALIVE_INTERVAL_SECS: u32 = 30;
 
 // ── SFTP buffers ──────────────────────────────────────────────────────────────
 pub const SFTP_TRANSFER_BUF_SIZE: usize = 65_536; // 64 KB — download/upload chunk
-pub const SFTP_PREVIEW_CAP_BYTES: usize = 2_097_152; // 2 MB — max file preview read
+pub const SFTP_PREVIEW_CAP_BYTES: usize = 10_485_760; // 10 MB — max file preview read
 
 // ── PTY / terminal ────────────────────────────────────────────────────────────
 pub const PTY_TERM_TYPE: &str = "xterm-256color";
