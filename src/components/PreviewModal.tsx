@@ -1,8 +1,12 @@
-import { Check, ChevronDown, ChevronUp, Pencil, Search, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronUp, Pencil, Search, Wand2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import * as jsYaml from "js-yaml";
+import xmlFormatter from "xml-formatter";
 import { readFilePreview, writeFileText, type FileEntry } from "../api";
 import type { PendingCommand } from "../hooks/useSessionLog";
-import { fileIcon, fileTypeLabel } from "../utils/fileType";
+import { fileIcon, fileTypeLabel, isKnownBinary, languageForFilename } from "../utils/fileType";
+import { CodeMirrorEditor, type CodeMirrorHandle } from "./CodeMirrorEditor";
+import { UnviewableFileCard, type UnviewableReason } from "./UnviewableFileCard";
 
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg"]);
 const IMAGE_MIME: Record<string, string> = {
@@ -28,34 +32,18 @@ function fmtSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-/** Escape RegExp meta-characters in a user-supplied search term. */
-function escapeRe(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** Non-overlapping match ranges of `query` in `text`. Case-insensitive. */
-function findMatches(text: string, query: string): { start: number; end: number }[] {
-  if (!query) return [];
-  const re = new RegExp(escapeRe(query), "gi");
-  const out: { start: number; end: number }[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    out.push({ start: m.index, end: m.index + m[0].length });
-    if (m[0].length === 0) re.lastIndex++;
-  }
-  return out;
-}
-
 interface PreviewModalProps {
   entry: FileEntry;
   onClose: () => void;
+  onDownload: () => void;
   onCommandLogged?: (cmd: PendingCommand) => void;
 }
 
-export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalProps) {
+export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: PreviewModalProps) {
   const [state, setState] = useState<
     "loading" | "image" | "text" | "binary" | "directory" | "error"
   >("loading");
+  const [unviewableReason, setUnviewableReason] = useState<UnviewableReason>("binary");
   /** Original content as loaded from the server. Never mutated after load. */
   const [content, setContent] = useState("");
   /** Working buffer used in edit mode. Diverges from `content` when dirty. */
@@ -66,26 +54,22 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  // Search state
   const [query, setQuery] = useState("");
-  const [matchIdx, setMatchIdx] = useState(0);
+  const [formatError, setFormatError] = useState<string | null>(null);
 
   const fileExt = ext(entry.name);
   const isImage = IMAGE_EXTS.has(fileExt);
+  const language = languageForFilename(entry.name);
+  const canFormat =
+    state === "text" && (language === "json" || language === "xml" || language === "yaml");
   const typeLabel = fileTypeLabel(entry.name, entry.kind);
   const icon = fileIcon(entry.name, entry.kind);
-  const displayText = mode === "edit" ? draft : content;
   const isDirty = mode === "edit" && draft !== content;
 
-  const matches = useMemo(
-    () => (state === "text" ? findMatches(displayText, query) : []),
-    [state, displayText, query],
-  );
-  const matchCount = matches.length;
-  const clampedMatchIdx = matchCount === 0 ? 0 : matchIdx % matchCount;
-
   const entryDir = entry.path.substring(0, entry.path.lastIndexOf("/")) || "/";
+
+  const editorRef = useRef<CodeMirrorHandle>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Load content on mount / when the file changes
   useEffect(() => {
@@ -93,10 +77,28 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
       setState("directory");
       return;
     }
+    // Skip byte fetch for known-binary extensions — jump straight to the card.
+    if (!isImage && isKnownBinary(fileExt)) {
+      setUnviewableReason("binary");
+      setState("binary");
+      onCommandLogged?.({
+        executedAt: Date.now(),
+        cwd: entryDir,
+        raw: `open ${entry.path}`,
+        exitCode: 0,
+        durationMs: 0,
+        output: null,
+        outputTruncated: false,
+        originalOutputBytes: 0,
+        source: "file_browser",
+      });
+      return;
+    }
     const t0 = Date.now();
     setState("loading");
     setSaveMsg(null);
     setMode("view");
+    setFormatError(null);
     readFilePreview(entry.path, 262144)
       .then((b64) => {
         if (isImage) {
@@ -139,6 +141,7 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
               source: "file_browser",
             });
           } catch {
+            setUnviewableReason("encoding");
             setState("binary");
           }
         }
@@ -150,31 +153,21 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry.path, entry.kind, isImage, fileExt]);
 
-  // Refs for scrolling / focusing
-  const contentAreaRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const activeMarkRef = useRef<HTMLElement | null>(null);
-
   const closeWithGuard = useCallback(() => {
     if (isDirty && !confirm("You have unsaved changes. Discard them?")) return;
     onClose();
   }, [isDirty, onClose]);
 
-  // Global keys: Esc to close, Cmd/Ctrl+F to focus search, Cmd/Ctrl+S to save
+  // Global keys: Esc, Cmd/Ctrl+F, Cmd/Ctrl+S
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        // If search box is focused: clear query first, then blur — never close directly from search.
         if (document.activeElement === searchInputRef.current) {
-          if (query) setQuery("");
+          if (query) {
+            setQuery("");
+            editorRef.current?.clearSearch();
+          }
           searchInputRef.current?.blur();
-          e.preventDefault();
-          return;
-        }
-        // If textarea is focused in edit mode: blur without closing.
-        if (document.activeElement === textareaRef.current) {
-          textareaRef.current?.blur();
           e.preventDefault();
           return;
         }
@@ -202,37 +195,26 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [closeWithGuard, state, mode, isDirty, saving, query]);
 
-  // Scroll the current match into view.
+  // Push search queries into the editor imperatively.
   useEffect(() => {
-    if (matchCount === 0) return;
-    // Give React a tick to render the highlighted spans.
-    requestAnimationFrame(() => {
-      activeMarkRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-    });
-  }, [matchCount, clampedMatchIdx]);
-
-  // In edit mode, if there's an active match, move the caret to it.
-  useEffect(() => {
-    if (mode !== "edit" || matchCount === 0) return;
-    const m = matches[clampedMatchIdx];
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.focus();
-    ta.setSelectionRange(m.start, m.end);
-    // Best-effort scroll
-    ta.scrollTop = Math.max(0, ta.scrollTop);
-  }, [mode, matchCount, clampedMatchIdx, matches]);
+    if (state !== "text") return;
+    editorRef.current?.setSearch(query);
+  }, [query, state]);
 
   function nextMatch() {
-    if (matchCount > 0) setMatchIdx((i) => (i + 1) % matchCount);
+    editorRef.current?.findNext();
   }
   function prevMatch() {
-    if (matchCount > 0) setMatchIdx((i) => (i - 1 + matchCount) % matchCount);
+    editorRef.current?.findPrev();
+  }
+  function clearSearch() {
+    setQuery("");
+    editorRef.current?.clearSearch();
   }
 
   async function copyToClipboard() {
     try {
-      await navigator.clipboard.writeText(displayText);
+      await navigator.clipboard.writeText(mode === "edit" ? draft : content);
     } catch {
       /* ignore */
     }
@@ -245,7 +227,7 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
     const t0 = Date.now();
     try {
       await writeFileText(entry.path, draft);
-      setContent(draft); // no longer dirty
+      setContent(draft);
       setSaveMsg({ ok: true, text: "Saved" });
       onCommandLogged?.({
         executedAt: t0,
@@ -289,45 +271,35 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
     setDraft(content);
     setMode("view");
     setSaveMsg(null);
+    setFormatError(null);
   }
 
-  // Render text content with search-match highlights.
-  function renderHighlightedText() {
-    if (matchCount === 0) {
-      return displayText.length > 200000
-        ? displayText.slice(0, 200000) +
-            "\n\n… (truncated at 200 000 characters — download to see the full file)"
-        : displayText;
+  function handleFormat() {
+    if (!canFormat) return;
+    const src = mode === "edit" ? draft : content;
+    try {
+      let out: string;
+      if (language === "json") {
+        out = JSON.stringify(JSON.parse(src), null, 2);
+      } else if (language === "xml") {
+        out = xmlFormatter(src, {
+          indentation: "  ",
+          collapseContent: true,
+          lineSeparator: "\n",
+        });
+      } else {
+        // language === "yaml" — canFormat guard above ensures we never hit anything else.
+        out = jsYaml.dump(jsYaml.load(src), { indent: 2, lineWidth: 120, noRefs: true });
+      }
+      setFormatError(null);
+      // Format is a real modification — switch to edit mode so the user can save it.
+      setDraft(out);
+      setMode("edit");
+      setSaveMsg(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setFormatError(msg);
     }
-    const nodes: React.ReactNode[] = [];
-    let cursor = 0;
-    matches.forEach((m, idx) => {
-      if (m.start > cursor) nodes.push(displayText.slice(cursor, m.start));
-      const isActive = idx === clampedMatchIdx;
-      nodes.push(
-        <mark
-          key={`m-${idx.toString()}`}
-          ref={
-            isActive
-              ? (el) => {
-                  activeMarkRef.current = el;
-                }
-              : undefined
-          }
-          style={{
-            background: isActive ? "#e0a53c" : "rgba(224,165,60,0.35)",
-            color: isActive ? "#1a1b1e" : "inherit",
-            borderRadius: "2px",
-            padding: "0 1px",
-          }}
-        >
-          {displayText.slice(m.start, m.end)}
-        </mark>,
-      );
-      cursor = m.end;
-    });
-    if (cursor < displayText.length) nodes.push(displayText.slice(cursor));
-    return nodes;
   }
 
   return (
@@ -386,7 +358,7 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
           </button>
         </div>
 
-        {/* Truncation warning — shown when file was too large to load fully */}
+        {/* Truncation warning */}
         {truncated && state === "text" && (
           <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-5 py-2 text-[12px] text-[#8a6020]">
             <span className="font-semibold">⚠ File truncated</span>
@@ -409,7 +381,6 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);
-                  setMatchIdx(0);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -423,31 +394,22 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
               />
               {query && (
                 <>
-                  <span className="font-mono text-[10.5px] text-text-tertiary">
-                    {matchCount === 0
-                      ? "0 / 0"
-                      : `${(clampedMatchIdx + 1).toString()} / ${matchCount.toString()}`}
-                  </span>
                   <button
                     onClick={prevMatch}
-                    disabled={matchCount === 0}
                     title="Previous match (Shift+Enter)"
-                    className="text-text-faint hover:text-text-secondary disabled:opacity-30"
+                    className="text-text-faint hover:text-text-secondary"
                   >
                     <ChevronUp size={12} strokeWidth={2.2} />
                   </button>
                   <button
                     onClick={nextMatch}
-                    disabled={matchCount === 0}
                     title="Next match (Enter)"
-                    className="text-text-faint hover:text-text-secondary disabled:opacity-30"
+                    className="text-text-faint hover:text-text-secondary"
                   >
                     <ChevronDown size={12} strokeWidth={2.2} />
                   </button>
                   <button
-                    onClick={() => {
-                      setQuery("");
-                    }}
+                    onClick={clearSearch}
                     title="Clear search"
                     className="text-text-faint hover:text-text-secondary"
                   >
@@ -458,6 +420,16 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
             </div>
 
             {/* Action buttons */}
+            {canFormat && (
+              <button
+                onClick={handleFormat}
+                className="flex items-center gap-1.5 rounded-input border border-border-input bg-surface-chip px-2.5 py-1 text-[11px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
+                title={`Pretty-print this ${language.toUpperCase()} — switches to edit mode`}
+              >
+                <Wand2 size={11} strokeWidth={2} />
+                Format
+              </button>
+            )}
             <button
               onClick={() => {
                 setWrap((w) => !w);
@@ -528,12 +500,28 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
           </div>
         )}
 
+        {/* Format error banner — file content unchanged, just informing user */}
+        {formatError && (
+          <div className="flex items-start gap-2 border-b border-danger/30 bg-danger/10 px-5 py-2 text-[11.5px] text-[#b33c34]">
+            <X size={13} strokeWidth={2.2} className="mt-0.5 flex-shrink-0" />
+            <div className="min-w-0 flex-1">
+              <span className="font-semibold">Cannot format:</span>{" "}
+              <span className="break-words font-mono">{formatError}</span>
+            </div>
+            <button
+              onClick={() => {
+                setFormatError(null);
+              }}
+              title="Dismiss"
+              className="flex-shrink-0 text-[#b33c34]/70 hover:text-[#b33c34]"
+            >
+              <X size={12} strokeWidth={2.2} />
+            </button>
+          </div>
+        )}
+
         {/* Body */}
-        <div
-          ref={contentAreaRef}
-          className="min-h-0 flex-1 overflow-auto"
-          style={{ background: "#f8f6f1" }}
-        >
+        <div className="min-h-0 flex-1 overflow-hidden" style={{ background: "#f8f6f1" }}>
           {state === "loading" && (
             <div className="flex h-full items-center justify-center text-[13px] text-text-faint">
               Loading preview…
@@ -547,9 +535,7 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
           )}
 
           {state === "binary" && (
-            <div className="flex h-full items-center justify-center text-[13px] text-text-faint">
-              Binary file — no text preview available
-            </div>
+            <UnviewableFileCard entry={entry} reason={unviewableReason} onDownload={onDownload} />
           )}
 
           {state === "error" && (
@@ -568,37 +554,29 @@ export function PreviewModal({ entry, onClose, onCommandLogged }: PreviewModalPr
             </div>
           )}
 
-          {state === "text" && mode === "view" && (
-            <pre
-              className={`font-mono text-[12.5px] leading-relaxed text-text-primary ${
-                wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
-              }`}
-              style={{ padding: "16px 20px", minHeight: "100%" }}
-            >
-              {renderHighlightedText()}
-            </pre>
-          )}
-
-          {state === "text" && mode === "edit" && (
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              onChange={(e) => {
-                setDraft(e.target.value);
-                setSaveMsg(null);
-              }}
-              spellCheck={false}
-              autoCapitalize="none"
-              autoCorrect="off"
-              className={`h-full w-full resize-none font-mono text-[12.5px] leading-relaxed text-text-primary outline-none ${
-                wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
-              }`}
-              style={{
-                padding: "16px 20px",
-                background: "transparent",
-                border: "none",
-                minHeight: "100%",
-              }}
+          {state === "text" && (
+            <CodeMirrorEditor
+              ref={editorRef}
+              value={mode === "edit" ? draft : content}
+              readOnly={mode === "view"}
+              language={language}
+              lineWrap={wrap}
+              onChange={
+                mode === "edit"
+                  ? (v) => {
+                      setDraft(v);
+                      setSaveMsg(null);
+                      setFormatError(null);
+                    }
+                  : undefined
+              }
+              onSave={
+                mode === "edit"
+                  ? () => {
+                      if (isDirty && !saving) void handleSave();
+                    }
+                  : undefined
+              }
             />
           )}
         </div>

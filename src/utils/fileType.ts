@@ -199,3 +199,115 @@ export function fileIcon(name: string, kind: string): FileIconStyle {
   const category = CATEGORY_OF_EXT[ext] ?? "file";
   return CATEGORY_COLOR[category];
 }
+
+// ── Preview helpers ───────────────────────────────────────────────────────────
+
+/** Extensions we know are binary — don't even try to UTF-8 decode. */
+const KNOWN_BINARY_EXTS = new Set([
+  "exe",
+  "dll",
+  "so",
+  "dylib",
+  "a",
+  "o",
+  "obj",
+  "zip",
+  "tar",
+  "gz",
+  "tgz",
+  "bz2",
+  "xz",
+  "7z",
+  "rar",
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "class",
+  "jar",
+  "war",
+  "ear",
+  "mp3",
+  "mp4",
+  "mov",
+  "avi",
+  "wav",
+  "flac",
+  "webm",
+  "sqlite",
+  "db",
+  "bin",
+  "iso",
+  "dmg",
+]);
+
+export function isKnownBinary(ext: string): boolean {
+  return KNOWN_BINARY_EXTS.has(ext.toLowerCase().replace(/^\./, ""));
+}
+
+/**
+ * Filename → CodeMirror language tag.
+ * Handles both extensions AND special filenames without dotted extensions
+ * (Dockerfile, Makefile, .bashrc, etc.). Returns null if we can't detect —
+ * the CodeMirror editor still works as a plain-text buffer.
+ */
+export function languageForFilename(filename: string): string | null {
+  const base = filename.toLowerCase();
+
+  // Special filenames (no dotted extension)
+  if (base === "dockerfile" || base.endsWith(".dockerfile")) return "dockerfile";
+  if (base === "makefile" || base === "gnumakefile") return "makefile";
+  if (base === ".bashrc" || base === ".zshrc" || base === ".bash_profile" || base === ".profile") {
+    return "shell";
+  }
+  if (base === ".gitignore" || base === ".gitattributes" || base === ".dockerignore") {
+    return "properties";
+  }
+  if (base === ".env" || base.startsWith(".env.")) return "properties";
+
+  const dot = base.lastIndexOf(".");
+  if (dot === -1) return null;
+  const e = base.slice(dot + 1);
+
+  const map: Record<string, string> = {
+    json: "json",
+    jsonl: "json",
+    xml: "xml",
+    svg: "xml",
+    plist: "xml",
+    pom: "xml",
+    yml: "yaml",
+    yaml: "yaml",
+    js: "javascript",
+    jsx: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    ts: "javascript",
+    tsx: "javascript",
+    py: "python",
+    pyw: "python",
+    html: "html",
+    htm: "html",
+    css: "css",
+    scss: "css",
+    less: "css",
+    md: "markdown",
+    markdown: "markdown",
+    sql: "sql",
+    sh: "shell",
+    bash: "shell",
+    zsh: "shell",
+    ksh: "shell",
+    dockerfile: "dockerfile",
+    toml: "toml",
+    ini: "properties",
+    conf: "properties",
+    env: "properties",
+    properties: "properties",
+    mk: "makefile",
+  };
+  return map[e] ?? null;
+}

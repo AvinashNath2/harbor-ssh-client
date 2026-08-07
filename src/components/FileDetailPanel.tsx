@@ -40,6 +40,7 @@ interface FileDetailPanelProps {
    *  right-click → "Edit permissions" menu item. */
   editPermissionsOnOpen?: boolean;
   onClose: () => void;
+  onDownload: (path: string) => void;
   onCommandLogged?: (cmd: PendingCommand) => void;
 }
 
@@ -48,6 +49,7 @@ export function FileDetailPanel({
   width,
   editPermissionsOnOpen,
   onClose,
+  onDownload,
   onCommandLogged,
 }: FileDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>(editPermissionsOnOpen ? "permissions" : "info");
@@ -173,6 +175,9 @@ export function FileDetailPanel({
           entry={entry}
           onClose={() => {
             setShowPreviewModal(false);
+          }}
+          onDownload={() => {
+            onDownload(entry.path);
           }}
         />
       )}

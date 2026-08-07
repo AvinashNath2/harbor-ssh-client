@@ -973,6 +973,9 @@ function ConnectedApp({
           onClose={() => {
             setPreviewEntry(null);
           }}
+          onDownload={() => {
+            void fileOps.download([previewEntry.path]);
+          }}
           onCommandLogged={logCommand}
         />
       )}
@@ -1186,6 +1189,9 @@ function ConnectedApp({
                         onClose={() => {
                           setDetailPanelPath(null);
                           setEditPermsForPath(null);
+                        }}
+                        onDownload={(path) => {
+                          void fileOps.download([path]);
                         }}
                         onCommandLogged={logCommand}
                       />
