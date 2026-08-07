@@ -14,8 +14,6 @@ import {
 } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import { DockerExplorerPage } from "./components/DockerExplorerPage";
-import { StorageAnalyzerPage } from "./components/StorageAnalyzerPage";
-import { ProcessMonitorPage } from "./components/ProcessMonitorPage";
 import { DockerPreflight } from "./components/DockerPreflight";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PageContextProvider } from "./context/PageContext";
@@ -23,7 +21,7 @@ import { askChat } from "./lib/terminalBus";
 import { DownloadHistoryPanel } from "./components/DownloadHistoryPanel";
 import { PortForwardPanel } from "./components/PortForwardPanel";
 import { PreviewModal } from "./components/PreviewModal";
-import { SessionLogPage } from "./components/SessionLogPage";
+import { openToolWindow } from "./utils/toolWindow";
 import { CommandPalette } from "./components/CommandPalette";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { FileDetailPanel } from "./components/FileDetailPanel";
@@ -66,7 +64,6 @@ export default function App() {
   const { state, connect, disconnect } = useConnection();
   const { profiles, save, remove } = useProfiles();
   const [showModal, setShowModal] = useState(false);
-  const [showSessionLog, setShowSessionLog] = useState(false);
   const [prefillProfile, setPrefillProfile] = useState<ConnectionProfile | null>(null);
   const [prefillFolder, setPrefillFolder] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -331,13 +328,6 @@ export default function App() {
   return (
     <PageContextProvider>
       <div className="flex h-full flex-col overflow-hidden">
-        {showSessionLog && (
-          <SessionLogPage
-            onClose={() => {
-              setShowSessionLog(false);
-            }}
-          />
-        )}
         {showImport && (
           <SshConfigImportModal
             existingProfiles={profiles}
@@ -433,9 +423,6 @@ export default function App() {
             }}
             sidebarHidden={sidebarHidden}
             onToggleSidebar={toggleSidebar}
-            onShowLog={() => {
-              setShowSessionLog(true);
-            }}
           />
         ) : (
           <DisconnectedApp
@@ -481,9 +468,6 @@ export default function App() {
             }}
             sidebarHidden={sidebarHidden}
             onToggleSidebar={toggleSidebar}
-            onShowLog={() => {
-              setShowSessionLog(true);
-            }}
           />
         )}
       </div>
@@ -522,7 +506,6 @@ interface DisconnectedAppProps {
   onMoveToFolder: (profileId: string, newFolder: string) => void;
   sidebarHidden: boolean;
   onToggleSidebar: (next: boolean) => void;
-  onShowLog: () => void;
 }
 
 function DisconnectedApp({
@@ -550,7 +533,6 @@ function DisconnectedApp({
   onMoveToFolder,
   sidebarHidden,
   onToggleSidebar,
-  onShowLog,
 }: DisconnectedAppProps) {
   return (
     <div className="relative flex h-full flex-col">
@@ -616,7 +598,9 @@ function DisconnectedApp({
                 ＋ New Session
               </button>
               <button
-                onClick={onShowLog}
+                onClick={() => {
+                  void openToolWindow("sessionLog");
+                }}
                 className="w-full rounded-input border border-border-input px-4 py-2 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-surface-chip hover:text-text-primary"
               >
                 Session Log
@@ -670,7 +654,6 @@ interface ConnectedAppProps {
   onMoveToFolder: (profileId: string, newFolder: string) => void;
   sidebarHidden: boolean;
   onToggleSidebar: (next: boolean) => void;
-  onShowLog: () => void;
 }
 
 function ConnectedApp({
@@ -694,7 +677,6 @@ function ConnectedApp({
   onMoveToFolder,
   sidebarHidden,
   onToggleSidebar,
-  onShowLog,
 }: ConnectedAppProps) {
   const [refreshToast, setRefreshToast] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -732,10 +714,6 @@ function ConnectedApp({
   const [showDocker, setShowDocker] = useState(false);
   // Preflight modal — shown when user clicks Docker toggle, decides whether Explorer opens
   const [showDockerPreflight, setShowDockerPreflight] = useState(false);
-
-  // Storage Analyzer (Data Profiler)
-  const [showStorageAnalyzer, setShowStorageAnalyzer] = useState(false);
-  const [showProcessMonitor, setShowProcessMonitor] = useState(false);
 
   // AI Chat panel (global — usable from any page)
   const [showChat, setShowChat] = useState<boolean>(() => {
@@ -1078,7 +1056,6 @@ function ConnectedApp({
         onToggleChat={() => {
           toggleChat();
         }}
-        onShowLog={onShowLog}
       />
 
       {/* Main content area */}
@@ -1272,12 +1249,6 @@ function ConnectedApp({
                       setShowTerminal(false);
                     }}
                     onCommandLogged={logCommand}
-                    onOpenDataProfiler={() => {
-                      setShowStorageAnalyzer(true);
-                    }}
-                    onOpenJavaMonitor={() => {
-                      setShowProcessMonitor(true);
-                    }}
                   />
                 </div>
               )}
@@ -1484,35 +1455,6 @@ function ConnectedApp({
                   }
                 : undefined
             }
-          />
-        </ErrorBoundary>
-      )}
-
-      {showProcessMonitor && (
-        <ErrorBoundary>
-          <ProcessMonitorPage
-            host={result.host}
-            username={result.username}
-            onClose={() => {
-              setShowProcessMonitor(false);
-            }}
-          />
-        </ErrorBoundary>
-      )}
-
-      {showStorageAnalyzer && (
-        <ErrorBoundary>
-          <StorageAnalyzerPage
-            host={result.host}
-            username={result.username}
-            osInfo={result.osInfo}
-            onClose={() => {
-              setShowStorageAnalyzer(false);
-            }}
-            onBrowse={(path) => {
-              setShowStorageAnalyzer(false);
-              navigateTo(activeId, path);
-            }}
           />
         </ErrorBoundary>
       )}

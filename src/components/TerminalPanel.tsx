@@ -2,16 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { listen } from "@tauri-apps/api/event";
-import {
-  ChevronDown,
-  Clipboard,
-  ClipboardPaste,
-  Coffee,
-  HardDrive,
-  Key,
-  Plus,
-  X,
-} from "lucide-react";
+import { ChevronDown, Clipboard, ClipboardPaste, Key, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   closeTerminal,
@@ -85,8 +76,6 @@ interface TerminalPanelProps {
   currentHost: string;
   onClose: () => void;
   onCommandLogged?: (cmd: PendingCommand) => void;
-  onOpenDataProfiler?: () => void;
-  onOpenJavaMonitor?: () => void;
 }
 
 export function TerminalPanel({
@@ -95,8 +84,6 @@ export function TerminalPanel({
   currentHost,
   onClose,
   onCommandLogged,
-  onOpenDataProfiler,
-  onOpenJavaMonitor,
 }: TerminalPanelProps) {
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -284,26 +271,6 @@ export function TerminalPanel({
           )}
         </div>
         <div className="flex-1" />
-        {onOpenJavaMonitor && (
-          <button
-            onClick={onOpenJavaMonitor}
-            className="mr-1 flex items-center gap-1.5 rounded px-2 py-1 text-[11.5px] font-medium text-gray-400 transition-colors hover:bg-white/5 hover:text-orange-400"
-            title="Open Java Monitor"
-          >
-            <Coffee size={12} strokeWidth={2} />
-            Java Monitor
-          </button>
-        )}
-        {onOpenDataProfiler && (
-          <button
-            onClick={onOpenDataProfiler}
-            className="mr-2 flex items-center gap-1.5 rounded px-2 py-1 text-[11.5px] font-medium text-gray-400 transition-colors hover:bg-white/5 hover:text-violet-300"
-            title="Open Data Profiler (storage analyzer)"
-          >
-            <HardDrive size={12} strokeWidth={2} />
-            Data Profiler
-          </button>
-        )}
         <button
           onClick={onClose}
           className="mr-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-gray-500 transition-colors hover:text-gray-300"

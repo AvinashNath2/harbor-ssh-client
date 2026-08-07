@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, Terminal } from "lucide-react";
+import { ArrowLeft, ChevronRight, Terminal, X } from "lucide-react";
 import { useState } from "react";
 import type { SessionRecord } from "../api";
 import { SessionDetailView } from "./SessionDetailView";
@@ -32,9 +32,10 @@ export function SessionLogPage({ onClose }: SessionLogPageProps) {
           <button
             onClick={onClose}
             className="flex items-center gap-1.5 text-[12.5px] font-medium text-text-secondary transition-colors hover:text-text-primary"
+            title="Close window"
           >
-            <ArrowLeft size={14} strokeWidth={2.2} />
-            HarborSCP
+            <X size={14} strokeWidth={2.2} />
+            Close
           </button>
         )}
 
