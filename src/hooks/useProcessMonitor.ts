@@ -134,7 +134,7 @@ export function useProcessMonitor() {
   );
 
   const killProcess = useCallback(
-    async (pid: number, force: boolean): Promise<boolean> => {
+    async (pid: number, force: boolean): Promise<{ ok: true } | { ok: false; error: string }> => {
       const sig = force ? "kill -9" : "kill -15";
       const t0 = Date.now();
       addLog({ level: "warn", source: "cmd", message: `${sig} ${pid.toString()}` });
@@ -151,11 +151,11 @@ export function useProcessMonitor() {
           setTimeout(r, force ? 800 : 2000);
         });
         await refresh();
-        return true;
+        return { ok: true };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         addLog({ level: "error", source: "kill", message: msg });
-        return false;
+        return { ok: false, error: msg };
       }
     },
     [addLog, refresh],

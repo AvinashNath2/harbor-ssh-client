@@ -277,15 +277,28 @@ pub async fn process_kill(
         let out = bundle
             .exec(&format!("kill -{sig} {pid} 2>&1"))
             .unwrap_or_default();
-        let out = out.trim();
+        let out = out.trim().to_string();
 
         if out.contains("No such process") {
             return Err(AppError::internal(format!("Process {pid} not found")));
         }
+        // Permission denied — try passwordless sudo as a fallback. Many admin
+        // users have this configured; it lets us kill root-owned processes
+        // without asking for a password.
         if out.contains("Operation not permitted") || out.contains("not permitted") {
-            return Err(AppError::internal(format!(
-                "Permission denied — cannot signal PID {pid}. The process may be owned by a different user."
-            )));
+            let sudo_out = bundle
+                .exec(&format!("sudo -n kill -{sig} {pid} 2>&1"))
+                .unwrap_or_default();
+            let sudo_out = sudo_out.trim();
+            if sudo_out.is_empty() {
+                return Ok(());
+            }
+            if sudo_out.contains("password is required") || sudo_out.contains("a password is required") {
+                return Err(AppError::internal(format!(
+                    "Permission denied — cannot signal PID {pid}. The process is owned by another user and passwordless sudo is not configured. Reconnect as root (or a user that owns the process) and try again."
+                )));
+            }
+            return Err(AppError::internal(format!("kill (sudo): {sudo_out}")));
         }
         if !out.is_empty() {
             return Err(AppError::internal(format!("kill: {out}")));

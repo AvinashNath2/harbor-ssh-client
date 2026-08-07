@@ -358,6 +358,7 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
   const [killConfirm, setKillConfirm] = useState<JavaProcess | null>(null);
   const [forceKillConfirm, setForceKillConfirm] = useState<JavaProcess | null>(null);
   const [busy, setBusy] = useState(false);
+  const [killError, setKillError] = useState<{ title: string; detail: string } | null>(null);
 
   const handleSelectProcess = useCallback(
     async (p: JavaProcess) => {
@@ -368,29 +369,47 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
     [fetchDetail],
   );
 
+  const runKill = useCallback(
+    async (proc: JavaProcess, force: boolean) => {
+      setBusy(true);
+      setKillError(null);
+      const result = await killProcess(proc.pid, force);
+      if (result.ok) {
+        if (selectedPid === proc.pid) {
+          setSelectedPid(null);
+          setDetail(null);
+        }
+      } else {
+        // Craft a helpful message when the failure is a permission issue
+        // and the process is owned by a different user than us.
+        const isPermission = /not permitted|permission denied/i.test(result.error);
+        const differentUser = proc.user && proc.user !== username;
+        setKillError({
+          title: `Failed to ${force ? "force-kill" : "kill"} PID ${proc.pid.toString()} (${proc.mainClass})`,
+          detail:
+            isPermission && differentUser
+              ? `${result.error} You are connected as "${username}" but this process is owned by "${proc.user}". Reconnect with a privileged account (or one that owns the process) and try again.`
+              : result.error,
+        });
+      }
+      setBusy(false);
+    },
+    [killProcess, selectedPid, username],
+  );
+
   const handleKillConfirmed = useCallback(async () => {
     if (!killConfirm) return;
-    setBusy(true);
+    const proc = killConfirm;
     setKillConfirm(null);
-    await killProcess(killConfirm.pid, false);
-    if (selectedPid === killConfirm.pid) {
-      setSelectedPid(null);
-      setDetail(null);
-    }
-    setBusy(false);
-  }, [killConfirm, killProcess, selectedPid]);
+    await runKill(proc, false);
+  }, [killConfirm, runKill]);
 
   const handleForceKillConfirmed = useCallback(async () => {
     if (!forceKillConfirm) return;
-    setBusy(true);
+    const proc = forceKillConfirm;
     setForceKillConfirm(null);
-    await killProcess(forceKillConfirm.pid, true);
-    if (selectedPid === forceKillConfirm.pid) {
-      setSelectedPid(null);
-      setDetail(null);
-    }
-    setBusy(false);
-  }, [forceKillConfirm, killProcess, selectedPid]);
+    await runKill(proc, true);
+  }, [forceKillConfirm, runKill]);
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-surface">
@@ -472,6 +491,26 @@ export function ProcessMonitorPage({ host, username, onClose }: ProcessMonitorPa
 
       {/* VM Memory bar */}
       {state.vmMemory && <VmMemoryBar mem={state.vmMemory} processCount={state.processes.length} />}
+
+      {/* Kill error banner — shown until dismissed or superseded */}
+      {killError && (
+        <div className="flex flex-none items-start gap-2.5 border-b border-danger/30 bg-danger/10 px-5 py-2.5 text-[12px] text-[#b33c34]">
+          <X size={14} strokeWidth={2.4} className="mt-0.5 flex-shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold">{killError.title}</div>
+            <div className="mt-0.5 leading-relaxed text-[#b33c34]/90">{killError.detail}</div>
+          </div>
+          <button
+            onClick={() => {
+              setKillError(null);
+            }}
+            title="Dismiss"
+            className="flex-shrink-0 text-[#b33c34]/70 transition-colors hover:text-[#b33c34]"
+          >
+            <X size={13} strokeWidth={2.2} />
+          </button>
+        </div>
+      )}
 
       {/* Body */}
       <div className="flex min-h-0 flex-1">
