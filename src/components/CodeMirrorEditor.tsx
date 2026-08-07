@@ -6,8 +6,17 @@ import {
   syntaxHighlighting,
 } from "@codemirror/language";
 import { SearchQuery, findNext, findPrevious, setSearchQuery } from "@codemirror/search";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
+import { Compartment, EditorState, type Extension, RangeSetBuilder } from "@codemirror/state";
+import {
+  Decoration,
+  type DecorationSet,
+  EditorView,
+  highlightActiveLine,
+  keymap,
+  lineNumbers,
+  ViewPlugin,
+  type ViewUpdate,
+} from "@codemirror/view";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 export interface CodeMirrorHandle {
@@ -22,9 +31,48 @@ interface Props {
   readOnly: boolean;
   language: string | null;
   lineWrap: boolean;
+  /** When true, lines that look like error entries get a light-red background.
+   *  Scanning is viewport-only, so this stays cheap even on multi-MB logs. */
+  highlightErrors?: boolean;
   onChange?: (next: string) => void;
   onSave?: () => void;
 }
+
+// Line pattern for common error / fatal log entries. The prefix requirement
+// (start of line, `]`, `-`, `:` followed by whitespace) prevents false
+// positives like a Python identifier `errorHandler`.
+const ERROR_LINE_RE = /(^|[\]\-:]\s)\s*(error|fatal|severe|critical|exception|traceback)\b/i;
+
+const ERROR_LINE_DECO = Decoration.line({ class: "cm-line-error" });
+
+const errorHighlightPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = this.build(view);
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = this.build(update.view);
+      }
+    }
+    build(view: EditorView): DecorationSet {
+      const builder = new RangeSetBuilder<Decoration>();
+      for (const { from, to } of view.visibleRanges) {
+        let pos = from;
+        while (pos <= to) {
+          const line = view.state.doc.lineAt(pos);
+          if (ERROR_LINE_RE.test(line.text)) {
+            builder.add(line.from, line.from, ERROR_LINE_DECO);
+          }
+          pos = line.to + 1;
+        }
+      }
+      return builder.finish();
+    }
+  },
+  { decorations: (p) => p.decorations },
+);
 
 // Theme override to match Harbor's IBM Plex Mono elsewhere in the app.
 const HARBOR_THEME = EditorView.theme({
@@ -43,6 +91,10 @@ const HARBOR_THEME = EditorView.theme({
   ".cm-activeLine": { backgroundColor: "rgba(63,123,224,0.05)" },
   ".cm-selectionMatch": { backgroundColor: "rgba(224,165,60,0.20)" },
   ".cm-searchMatch": { backgroundColor: "rgba(224,165,60,0.35)", borderRadius: "2px" },
+  ".cm-line-error": {
+    backgroundColor: "rgba(229,83,75,0.10)",
+    boxShadow: "inset 3px 0 0 rgba(229,83,75,0.55)",
+  },
   ".cm-searchMatch.cm-searchMatch-selected": {
     backgroundColor: "#e0a53c",
     color: "#1a1b1e",
@@ -50,7 +102,7 @@ const HARBOR_THEME = EditorView.theme({
 });
 
 export const CodeMirrorEditor = forwardRef<CodeMirrorHandle, Props>(function CodeMirrorEditor(
-  { value, readOnly, language, lineWrap, onChange, onSave },
+  { value, readOnly, language, lineWrap, highlightErrors, onChange, onSave },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -58,6 +110,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorHandle, Props>(function Cod
   const langCompartment = useRef(new Compartment());
   const readOnlyCompartment = useRef(new Compartment());
   const wrapCompartment = useRef(new Compartment());
+  const errorHighlightCompartment = useRef(new Compartment());
   // Stable refs to callbacks so the mount effect doesn't rebuild the view.
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -112,6 +165,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorHandle, Props>(function Cod
         langCompartment.current.of([]),
         readOnlyCompartment.current.of(EditorState.readOnly.of(readOnly)),
         wrapCompartment.current.of(lineWrap ? EditorView.lineWrapping : []),
+        errorHighlightCompartment.current.of(highlightErrors ? errorHighlightPlugin : []),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) onChangeRef.current?.(u.state.doc.toString());
         }),
@@ -146,6 +200,15 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorHandle, Props>(function Cod
       effects: wrapCompartment.current.reconfigure(lineWrap ? EditorView.lineWrapping : []),
     });
   }, [lineWrap]);
+
+  // Toggle error-line highlighting.
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: errorHighlightCompartment.current.reconfigure(
+        highlightErrors ? errorHighlightPlugin : [],
+      ),
+    });
+  }, [highlightErrors]);
 
   // Sync external value changes (e.g. after Save or Format button).
   useEffect(() => {

@@ -1,12 +1,19 @@
-import { Check, ChevronDown, ChevronUp, Pencil, Search, Wand2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Info, Pencil, Search, Wand2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as jsYaml from "js-yaml";
 import xmlFormatter from "xml-formatter";
-import { readFilePreview, writeFileText, type FileEntry } from "../api";
+import { readFilePreview, readFilePreviewTail, writeFileText, type FileEntry } from "../api";
 import type { PendingCommand } from "../hooks/useSessionLog";
 import { fileIcon, fileTypeLabel, isKnownBinary, languageForFilename } from "../utils/fileType";
 import { CodeMirrorEditor, type CodeMirrorHandle } from "./CodeMirrorEditor";
 import { UnviewableFileCard, type UnviewableReason } from "./UnviewableFileCard";
+
+/** Max bytes we ever fetch for a preview. Matches SFTP_PREVIEW_CAP_BYTES in Rust. */
+const PREVIEW_CAP_BYTES = 2 * 1024 * 1024;
+/** Above this file size we warn the user before starting the fetch. */
+const HUGE_FILE_THRESHOLD = 50 * 1024 * 1024;
+/** How much of the file we ship into the session-log record (cheap storage). */
+const SESSION_LOG_CAP = 50 * 1024;
 
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg"]);
 const IMAGE_MIME: Record<string, string> = {
@@ -41,7 +48,7 @@ interface PreviewModalProps {
 
 export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: PreviewModalProps) {
   const [state, setState] = useState<
-    "loading" | "image" | "text" | "binary" | "directory" | "error"
+    "loading" | "confirm-huge" | "image" | "text" | "binary" | "directory" | "error"
   >("loading");
   const [unviewableReason, setUnviewableReason] = useState<UnviewableReason>("binary");
   /** Original content as loaded from the server. Never mutated after load. */
@@ -49,16 +56,20 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
   /** Working buffer used in edit mode. Diverges from `content` when dirty. */
   const [draft, setDraft] = useState("");
   const [truncated, setTruncated] = useState(false);
+  const [fetchMode, setFetchMode] = useState<"head" | "tail">("head");
   const [error, setError] = useState("");
   const [wrap, setWrap] = useState(true);
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [formatError, setFormatError] = useState<string | null>(null);
+  const [fetchNonce, setFetchNonce] = useState(0);
 
   const fileExt = ext(entry.name);
   const isImage = IMAGE_EXTS.has(fileExt);
+  const isLogFile = fileExt === "log";
   const language = languageForFilename(entry.name);
   const canFormat =
     state === "text" && (language === "json" || language === "xml" || language === "yaml");
@@ -70,8 +81,12 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
 
   const editorRef = useRef<CodeMirrorHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  /** Bumped each time we begin a fetch. In-flight promises check this on
+   *  completion and abort their state writes if a newer fetch has started
+   *  or the modal was closed. */
+  const activeFetchRef = useRef(0);
 
-  // Load content on mount / when the file changes
+  // Load content on mount / when the file changes / on retry (fetchNonce bump).
   useEffect(() => {
     if (entry.kind === "directory") {
       setState("directory");
@@ -94,13 +109,33 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
       });
       return;
     }
+    // Huge files: confirm before pulling anything. Images bypass the confirm
+    // (they're capped by the same PREVIEW_CAP_BYTES on the Rust side anyway).
+    if (
+      !isImage &&
+      entry.size !== null &&
+      entry.size > HUGE_FILE_THRESHOLD &&
+      state !== "confirm-huge" &&
+      fetchNonce === 0
+    ) {
+      setState("confirm-huge");
+      return;
+    }
+
+    // Begin fetch. Any earlier in-flight fetch will see its nonce is stale
+    // and skip its state writes.
+    const myNonce = activeFetchRef.current + 1;
+    activeFetchRef.current = myNonce;
     const t0 = Date.now();
     setState("loading");
     setSaveMsg(null);
     setMode("view");
     setFormatError(null);
-    readFilePreview(entry.path, 262144)
+
+    const reader = fetchMode === "tail" ? readFilePreviewTail : readFilePreview;
+    reader(entry.path, PREVIEW_CAP_BYTES)
       .then((b64) => {
+        if (activeFetchRef.current !== myNonce) return; // stale response
         if (isImage) {
           const mime = IMAGE_MIME[fileExt] ?? "image/png";
           setContent(`data:${mime};base64,${b64}`);
@@ -126,17 +161,18 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
             setContent(text);
             setDraft(text);
             setState("text");
-            const MAX = 50 * 1024;
-            const isTruncated = text.length > MAX;
-            setTruncated(isTruncated);
+            const hitCap = bytes.length >= PREVIEW_CAP_BYTES;
+            const knownLarger = entry.size !== null && entry.size > PREVIEW_CAP_BYTES;
+            setTruncated(hitCap || knownLarger);
+            const logSlice = text.length > SESSION_LOG_CAP ? text.slice(0, SESSION_LOG_CAP) : text;
             onCommandLogged?.({
               executedAt: t0,
               cwd: entryDir,
-              raw: `cat ${entry.path}`,
+              raw: `${fetchMode === "tail" ? "tail" : "cat"} ${entry.path}`,
               exitCode: 0,
               durationMs: Date.now() - t0,
-              output: isTruncated ? text.slice(0, MAX) : text,
-              outputTruncated: isTruncated,
+              output: logSlice,
+              outputTruncated: text.length > SESSION_LOG_CAP,
               originalOutputBytes: text.length,
               source: "file_browser",
             });
@@ -147,11 +183,16 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
         }
       })
       .catch((e: unknown) => {
+        if (activeFetchRef.current !== myNonce) return;
         setError(e instanceof Error ? e.message : String(e));
         setState("error");
       });
+    // Invalidate all in-flight fetches when the modal unmounts.
+    return () => {
+      activeFetchRef.current = -1;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.path, entry.kind, isImage, fileExt]);
+  }, [entry.path, entry.kind, isImage, fileExt, fetchMode, fetchNonce]);
 
   const closeWithGuard = useCallback(() => {
     if (isDirty && !confirm("You have unsaved changes. Discard them?")) return;
@@ -195,11 +236,23 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [closeWithGuard, state, mode, isDirty, saving, query]);
 
-  // Push search queries into the editor imperatively.
+  // Debounce the raw `query` (per-keystroke) into `debouncedQuery` (settled).
+  // Keeps search snappy on multi-MB files where a full-doc re-decorate on
+  // every keystroke would feel sluggish.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 150);
+    return () => {
+      window.clearTimeout(t);
+    };
+  }, [query]);
+
+  // Push the debounced query into the editor.
   useEffect(() => {
     if (state !== "text") return;
-    editorRef.current?.setSearch(query);
-  }, [query, state]);
+    editorRef.current?.setSearch(debouncedQuery);
+  }, [debouncedQuery, state]);
 
   function nextMatch() {
     editorRef.current?.findNext();
@@ -358,13 +411,34 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
           </button>
         </div>
 
-        {/* Truncation warning */}
+        {/* Truncation warning — with a switch button between head and tail */}
         {truncated && state === "text" && (
-          <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-5 py-2 text-[12px] text-[#8a6020]">
+          <div className="flex flex-wrap items-center gap-2 border-b border-warning/30 bg-warning/10 px-5 py-2 text-[12px] text-[#8a6020]">
             <span className="font-semibold">⚠ File truncated</span>
             <span className="text-[#8a6020]/80">
-              — showing first 50 KB only. Download the file to view or edit it fully.
+              — showing {fetchMode === "tail" ? "last" : "first"} {fmtSize(PREVIEW_CAP_BYTES)}
+              {entry.size !== null && entry.size > PREVIEW_CAP_BYTES
+                ? ` of ${fmtSize(entry.size)}`
+                : ""}
+              .
             </span>
+            <button
+              onClick={() => {
+                setFetchMode(fetchMode === "tail" ? "head" : "tail");
+                setFetchNonce((n) => n + 1);
+              }}
+              className="ml-auto rounded-input border border-[#8a6020]/30 bg-white/50 px-2 py-0.5 text-[11px] font-medium text-[#8a6020] transition-colors hover:bg-white"
+            >
+              {fetchMode === "tail"
+                ? `Show first ${fmtSize(PREVIEW_CAP_BYTES)}`
+                : `Show last ${fmtSize(PREVIEW_CAP_BYTES)}`}
+            </button>
+            <button
+              onClick={onDownload}
+              className="rounded-input border border-[#8a6020]/30 bg-white/50 px-2 py-0.5 text-[11px] font-medium text-[#8a6020] transition-colors hover:bg-white"
+            >
+              Download full file
+            </button>
           </div>
         )}
 
@@ -430,15 +504,27 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
                 Format
               </button>
             )}
-            <button
-              onClick={() => {
-                setWrap((w) => !w);
-              }}
-              className="rounded-input border border-border-input bg-surface-chip px-2.5 py-1 text-[11px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
-              title="Toggle line wrap"
-            >
-              {wrap ? "No wrap" : "Wrap"}
-            </button>
+            <div className="flex items-center">
+              <button
+                onClick={() => {
+                  setWrap((w) => !w);
+                }}
+                className="rounded-l-input border border-r-0 border-border-input bg-surface-chip px-2.5 py-1 text-[11px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
+                title={
+                  wrap
+                    ? "Line wrap is ON — click to turn off (long lines will scroll sideways)"
+                    : "Line wrap is OFF — click to turn on (long lines will fold to fit)"
+                }
+              >
+                {wrap ? "No wrap" : "Wrap"}
+              </button>
+              <span
+                className="flex h-[26px] items-center justify-center rounded-r-input border border-border-input bg-surface-chip px-1.5 text-text-faint"
+                title="Line wrap ON: long lines fold to the next visual row (no sideways scroll). Line wrap OFF: long lines run off the right; scroll horizontally to see the rest. Toggle it based on whether you're reading prose/logs (wrap) or code/tables (no wrap)."
+              >
+                <Info size={11} strokeWidth={2} />
+              </span>
+            </div>
             <button
               onClick={() => {
                 void copyToClipboard();
@@ -523,8 +609,73 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-hidden" style={{ background: "#f8f6f1" }}>
           {state === "loading" && (
-            <div className="flex h-full items-center justify-center text-[13px] text-text-faint">
-              Loading preview…
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-[13px] text-text-secondary">
+              <span
+                className="inline-block h-5 w-5 flex-shrink-0 animate-spin rounded-full border-2"
+                style={{ borderColor: "#3f7be0", borderTopColor: "transparent" }}
+              />
+              <span>
+                {fetchMode === "tail" ? "Loading last part of" : "Loading"}{" "}
+                {entry.size !== null && entry.size > PREVIEW_CAP_BYTES
+                  ? `${fmtSize(PREVIEW_CAP_BYTES)} of ${fmtSize(entry.size)}`
+                  : fmtSize(entry.size)}
+                …
+              </span>
+              <button
+                onClick={closeWithGuard}
+                className="rounded-input border border-border-input px-2.5 py-1 text-[11px] font-medium text-text-tertiary transition-colors hover:bg-surface-chip hover:text-text-primary"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {state === "confirm-huge" && (
+            <div className="flex h-full items-center justify-center p-8">
+              <div
+                className="max-w-md rounded-modal border border-border-raised bg-surface-pane p-6 text-center"
+                style={{ boxShadow: "0 12px 40px -12px rgba(20,18,15,0.30)" }}
+              >
+                <h2 className="mb-1.5 text-[15px] font-semibold text-text-primary">
+                  This is a large file
+                </h2>
+                <p className="mb-5 text-[12.5px] leading-relaxed text-text-secondary">
+                  {entry.name} is {fmtSize(entry.size)}. Only the{" "}
+                  {fetchMode === "tail" ? "last" : "first"} {fmtSize(PREVIEW_CAP_BYTES)} will be
+                  loaded — the rest can be reached with
+                  <span className="mx-1 rounded bg-surface-chip px-1 py-0.5 font-mono text-[11px]">
+                    Download full file
+                  </span>
+                  or from the terminal.
+                </p>
+                <div className="flex justify-center gap-2">
+                  <button
+                    onClick={closeWithGuard}
+                    className="rounded-input border border-border-input bg-surface-chip px-3 py-1.5 text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFetchMode("head");
+                      setFetchNonce((n) => n + 1);
+                    }}
+                    className="rounded-input border border-border-input bg-surface-chip px-3 py-1.5 text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
+                  >
+                    Load first {fmtSize(PREVIEW_CAP_BYTES)}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFetchMode("tail");
+                      setFetchNonce((n) => n + 1);
+                    }}
+                    className="rounded-input px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
+                    style={{ background: "linear-gradient(150deg, #3f7be0, #2f6bdb)" }}
+                  >
+                    Load last {fmtSize(PREVIEW_CAP_BYTES)}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -561,6 +712,7 @@ export function PreviewModal({ entry, onClose, onDownload, onCommandLogged }: Pr
               readOnly={mode === "view"}
               language={language}
               lineWrap={wrap}
+              highlightErrors={isLogFile}
               onChange={
                 mode === "edit"
                   ? (v) => {

@@ -364,6 +364,16 @@ pub async fn read_file_preview(
     sftp_op!(state, |bundle| bundle.read_file_preview(&path, max_bytes))
 }
 
+#[tauri::command]
+pub async fn read_file_preview_tail(
+    state: tauri::State<'_, SshState>,
+    path: String,
+    max_bytes: usize,
+) -> Result<String, AppError> {
+    sftp_op!(state, |bundle| bundle
+        .read_file_preview_tail(&path, max_bytes))
+}
+
 /// Overwrite a remote file with the given UTF-8 text content. Used by the
 /// preview modal's "Save" button after inline editing.
 #[tauri::command]

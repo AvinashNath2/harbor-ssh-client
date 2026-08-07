@@ -31,8 +31,8 @@ pub use downloads::{clear_download_history, delete_download, list_downloads, sav
 pub use fs::{
     cancel_folder_list, cancel_transfer, chmod_file, compute_folder_size, create_folder,
     delete_path, download_file, download_file_queued, get_file_info, list_folder,
-    list_folder_stream, read_file_preview, rename_path, stat_path, upload_file, upload_file_queued,
-    write_file_text,
+    list_folder_stream, read_file_preview, read_file_preview_tail, rename_path, stat_path,
+    upload_file, upload_file_queued, write_file_text,
 };
 pub use local_fs::{
     delete_local_path, export_profiles_json, get_local_home, import_profiles_json,

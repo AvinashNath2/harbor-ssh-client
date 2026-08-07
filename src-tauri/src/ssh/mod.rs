@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::net::TcpStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -568,6 +568,32 @@ impl SessionBundle {
         let sftp = self.get_sftp()?;
         let mut file = sftp.open(Path::new(path)).map_err(AppError::from)?;
         let cap = max_bytes.min(SFTP_PREVIEW_CAP_BYTES);
+        let mut buf = vec![0u8; cap];
+        let n = Read::read(&mut file, &mut buf)
+            .map_err(|e| AppError::internal(format!("Read failed: {e}")))?;
+        Ok(base64_encode(&buf[..n]))
+    }
+
+    /// Read the last `max_bytes` bytes of a file. Used by the preview modal's
+    /// "Show last 2 MB" button for large log files. `SeekFrom::End` is a
+    /// single SFTP roundtrip; the actual bytes are then streamed back in one
+    /// bounded read.
+    pub fn read_file_preview_tail(
+        &mut self,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<String, AppError> {
+        let sftp = self.get_sftp()?;
+        let mut file = sftp.open(Path::new(path)).map_err(AppError::from)?;
+        let cap = max_bytes.min(SFTP_PREVIEW_CAP_BYTES);
+        // Seek from END: negative offset = read the tail. If the file is
+        // smaller than `cap`, seek to the start instead so we don't over-read.
+        let end = file
+            .seek(SeekFrom::End(0))
+            .map_err(|e| AppError::internal(format!("Seek(End) failed: {e}")))?;
+        let offset = end.saturating_sub(cap as u64);
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|e| AppError::internal(format!("Seek(Start) failed: {e}")))?;
         let mut buf = vec![0u8; cap];
         let n = Read::read(&mut file, &mut buf)
             .map_err(|e| AppError::internal(format!("Read failed: {e}")))?;

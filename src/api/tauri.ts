@@ -302,6 +302,10 @@ export async function readFilePreview(path: string, maxBytes: number): Promise<s
   return invoke<string>("read_file_preview", { path, maxBytes });
 }
 
+export async function readFilePreviewTail(path: string, maxBytes: number): Promise<string> {
+  return invoke<string>("read_file_preview_tail", { path, maxBytes });
+}
+
 export async function writeFileText(path: string, content: string): Promise<void> {
   await invoke("write_file_text", { path, content });
 }
