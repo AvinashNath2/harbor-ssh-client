@@ -48,6 +48,9 @@ pub struct SessionBundle {
     _stream: TcpStream,
     /// Cached SFTP handle — avoids re-initializing the SFTP subsystem on every call.
     sftp: Option<ssh2::Sftp>,
+    /// Cached `command -v ionice` result — probed lazily on first storage scan,
+    /// then reused for every throttled command in this session.
+    ionice_available: Option<bool>,
 }
 
 impl SessionBundle {
@@ -128,6 +131,7 @@ impl SessionBundle {
             ip_addr,
             _stream: stream_clone,
             sftp: None,
+            ionice_available: None,
         })
     }
 
@@ -183,6 +187,20 @@ impl SessionBundle {
             .map_err(|e| AppError::internal(format!("channel close failed: {e}")))?;
 
         Ok(output.trim().to_owned())
+    }
+
+    /// Check whether the `ionice` utility is available on the remote server.
+    /// Result is cached for the lifetime of this session — probes at most once.
+    pub fn has_ionice(&mut self) -> bool {
+        if let Some(v) = self.ionice_available {
+            return v;
+        }
+        let out = self
+            .exec("command -v ionice >/dev/null 2>&1 && echo __YES__ || echo __NO__")
+            .unwrap_or_default();
+        let v = out.contains("__YES__");
+        self.ionice_available = Some(v);
+        v
     }
 
     pub fn host(&self) -> &str {

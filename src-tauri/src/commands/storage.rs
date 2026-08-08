@@ -11,15 +11,25 @@ use crate::ssh::SshState;
 /// killed by the remote OS if it exceeds `timeout_secs` seconds.
 ///
 /// - `nice -n 19`: lowest CPU scheduling class — scans yield to every other process.
+/// - `ionice -c 3` (when available): idle I/O class — disk reads only happen when
+///   nothing else needs the disk. Prevents `du`/`find` from hurting production I/O.
 /// - `timeout <N>`: guarantees the remote `find`/`du` process is killed even if the
 ///   SSH channel closes unexpectedly, preventing orphaned heavy processes on prod.
 /// - Running inside `sh -c` lets the pipe (`find … | head`) be managed by a single
 ///   shell process group, so SIGTERM from `timeout` propagates to all children.
 ///
 /// Single quotes inside `cmd` are automatically escaped.
-fn throttle(cmd: &str, timeout_secs: u32) -> String {
+fn throttle(cmd: &str, timeout_secs: u32, has_ionice: bool) -> String {
     let escaped = cmd.replace('\'', "'\\''");
-    format!("timeout {timeout_secs} nice -n 19 sh -c '{escaped}'")
+    let io_wrap = if has_ionice { "ionice -c 3 " } else { "" };
+    format!("timeout {timeout_secs} nice -n 19 {io_wrap}sh -c '{escaped}'")
+}
+
+/// Convenience wrapper: probes `ionice` availability (cached per session) and
+/// builds a throttled command in one call. Use this instead of raw `throttle()`
+/// so every storage scan automatically picks up idle I/O priority when available.
+fn throttled_cmd(bundle: &mut crate::ssh::SessionBundle, cmd: &str, timeout_secs: u32) -> String {
+    throttle(cmd, timeout_secs, bundle.has_ionice())
 }
 
 #[derive(Debug, Serialize)]
@@ -63,10 +73,10 @@ pub async fn storage_overview(
 ) -> Result<Vec<DiskMount>, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
         let output = bundle.exec("df -PB1 2>/dev/null")?;
         let mut mounts = Vec::new();
@@ -120,10 +130,10 @@ pub async fn storage_system_info(
 ) -> Result<StorageSystemInfo, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
         let uptime = bundle
             .exec("uptime -p 2>/dev/null || uptime")
@@ -186,13 +196,13 @@ pub async fn storage_scan_root(
 ) -> Result<Vec<FolderSize>, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
         let d = depth.unwrap_or(1);
-        let cmd = throttle(&format!("du -x -B1 -d {d} / 2>/dev/null"), 180);
+        let cmd = throttled_cmd(bundle, &format!("du -x -B1 -d {d} / 2>/dev/null"), 180);
         let output = bundle.exec(&cmd)?;
 
         let mut folders: Vec<FolderSize> = output
@@ -223,16 +233,16 @@ pub async fn storage_age_histogram(
 ) -> Result<AgeHistogram, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
         // -xdev stays on the same filesystem; head -c 4 MB caps output and forces
         // SIGPIPE to find faster than a line count does.
         let inner =
             format!("find {path} -xdev -type f -printf '%T@ %s\\n' 2>/dev/null | head -c 4194304");
-        let cmd = throttle(&inner, 120);
+        let cmd = throttled_cmd(bundle, &inner, 120);
         let output = bundle.exec(&cmd)?;
 
         let now = std::time::SystemTime::now()
@@ -300,13 +310,17 @@ pub async fn storage_scan_path(
 ) -> Result<Vec<FolderSize>, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
         let d = depth.unwrap_or(1);
-        let cmd = throttle(&format!("du -x -B1 -d {d} -- {path} 2>/dev/null"), 60);
+        let cmd = throttled_cmd(
+            bundle,
+            &format!("du -x -B1 -d {d} -- {path} 2>/dev/null"),
+            60,
+        );
         let output = bundle.exec(&cmd)?;
 
         let mut folders: Vec<FolderSize> = output
@@ -355,10 +369,10 @@ pub async fn storage_category_sizes(
 ) -> Result<Vec<FolderSize>, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
         let inner = "du -B1 -s \
             /home /root \
@@ -375,7 +389,7 @@ pub async fn storage_category_sizes(
             /data /backup /backups \
             2>/dev/null";
 
-        let cmd = throttle(inner, 60);
+        let cmd = throttled_cmd(bundle, inner, 60);
         let output = bundle.exec(&cmd)?;
 
         Ok(output
@@ -449,10 +463,10 @@ fn check_avail(bundle: &crate::ssh::SessionBundle, check: &str) -> bool {
 pub async fn storage_check_sudo(state: tauri::State<'_, SshState>) -> Result<bool, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
         let out = bundle.exec("sudo -n true >/dev/null 2>&1 && echo __YES__ || echo __NO__")?;
         Ok(out.contains("__YES__"))
     })
@@ -643,10 +657,10 @@ pub async fn storage_find_duplicates(
 ) -> Result<Vec<DuplicateGroup>, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
         // Single pass: size + mtime + path — pure metadata, no file content read.
         // Capped at 1500 entries; head -c 1 MB bounds memory on Rust side.
@@ -654,7 +668,7 @@ pub async fn storage_find_duplicates(
             "find {root} -maxdepth {max_depth} -type f -size +{min_size_bytes}c \
              -printf '%s\\t%T@\\t%p\\n' 2>/dev/null | sort -rn | head -1500"
         );
-        let cmd = throttle(&inner, 90);
+        let cmd = throttled_cmd(bundle, &inner, 90);
         let meta_out = bundle.exec(&cmd).unwrap_or_default();
 
         // Group by exact byte size in Rust.
@@ -720,10 +734,10 @@ pub async fn storage_largest_items(
 ) -> Result<Vec<LargestFile>, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh
+        let mut guard = ssh
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
-        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+        let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
         let n = limit.unwrap_or(200);
 
@@ -733,13 +747,15 @@ pub async fn storage_largest_items(
                     "find {root} -xdev -type f -printf '%s %T@ %P\\n' 2>/dev/null \
                      | sort -rn | head -{n}"
                 );
-                bundle.exec(&throttle(&inner, 120))?
+                let cmd = throttled_cmd(bundle, &inner, 120);
+                bundle.exec(&cmd)?
             }
             LargestKind::Folders => {
                 // depth 3 is a safer default than 5 on large trees
                 let inner =
                     format!("du -x -B1 --max-depth=3 {root} 2>/dev/null | sort -rn | head -{n}");
-                bundle.exec(&throttle(&inner, 120))?
+                let cmd = throttled_cmd(bundle, &inner, 120);
+                bundle.exec(&cmd)?
             }
         };
 
@@ -781,6 +797,75 @@ pub async fn storage_largest_items(
         };
 
         Ok(items)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
+// ── Live server load (for the "Server Load" popup during scans) ───────────────
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemLoad {
+    pub load_one_m: f32,
+    pub load_five_m: f32,
+    pub cpu_cores: u32,
+    pub mem_used_bytes: u64,
+    pub mem_total_bytes: u64,
+}
+
+/// Cheap live-load snapshot for the server-load popup shown during scans.
+/// Reads three /proc / free files in a single exec — ~30–50 ms per call.
+#[tauri::command]
+pub async fn storage_system_load(
+    state: tauri::State<'_, SshState>,
+) -> Result<SystemLoad, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        // Batch three trivial reads into one round-trip. Section headers let us
+        // find each block regardless of ordering / warnings on stderr.
+        let out = bundle.exec(
+            "printf 'LOAD:'; cat /proc/loadavg 2>/dev/null; \
+             printf '\\nMEM:'; free -b 2>/dev/null | awk 'NR==2{print $3, $2}'; \
+             printf '\\nCORES:'; nproc 2>/dev/null || echo 1",
+        )?;
+
+        let mut load_one_m: f32 = 0.0;
+        let mut load_five_m: f32 = 0.0;
+        let mut mem_used_bytes: u64 = 0;
+        let mut mem_total_bytes: u64 = 0;
+        let mut cpu_cores: u32 = 1;
+
+        for line in out.lines() {
+            if let Some(rest) = line.strip_prefix("LOAD:") {
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    load_one_m = parts[0].parse().unwrap_or(0.0);
+                    load_five_m = parts[1].parse().unwrap_or(0.0);
+                }
+            } else if let Some(rest) = line.strip_prefix("MEM:") {
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    mem_used_bytes = parts[0].parse().unwrap_or(0);
+                    mem_total_bytes = parts[1].parse().unwrap_or(0);
+                }
+            } else if let Some(rest) = line.strip_prefix("CORES:") {
+                cpu_cores = rest.trim().parse().unwrap_or(1);
+            }
+        }
+
+        Ok(SystemLoad {
+            load_one_m,
+            load_five_m,
+            cpu_cores,
+            mem_used_bytes,
+            mem_total_bytes,
+        })
     })
     .await
     .map_err(|e| AppError::internal(format!("Task join error: {e}")))?

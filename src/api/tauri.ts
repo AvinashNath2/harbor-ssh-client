@@ -664,12 +664,24 @@ export interface AgeHistogram {
   total_files: number;
 }
 
+export interface SystemLoad {
+  loadOneM: number;
+  loadFiveM: number;
+  cpuCores: number;
+  memUsedBytes: number;
+  memTotalBytes: number;
+}
+
 export async function storageOverview(): Promise<DiskMount[]> {
   return invoke<DiskMount[]>("storage_overview");
 }
 
 export async function storageSystemInfo(): Promise<StorageSystemInfo> {
   return invoke<StorageSystemInfo>("storage_system_info");
+}
+
+export async function storageSystemLoad(): Promise<SystemLoad> {
+  return invoke<SystemLoad>("storage_system_load");
 }
 
 export async function storageScanRoot(depth?: number): Promise<FolderSize[]> {

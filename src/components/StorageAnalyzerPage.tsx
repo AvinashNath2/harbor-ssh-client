@@ -1,7 +1,6 @@
 import {
   Activity,
   Database,
-  Folder,
   FolderOpen,
   HardDrive,
   LayoutDashboard,
@@ -13,18 +12,20 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStorageAnalyzer } from "../hooks/useStorageAnalyzer";
 import { formatBytes, HEALTH_COLOR, mountHealth } from "../utils/storageHealth";
 import { AgeHistogramBar } from "./storage/AgeHistogram";
 import { CleanupCenter } from "./storage/CleanupCenter";
-import { CategoryDonut, PartitionsBar, TopFoldersBar } from "./storage/DashboardCharts";
+import { CategoryDonut, PartitionsBar } from "./storage/DashboardCharts";
 import { DuplicatesTab } from "./storage/DuplicatesTab";
 import { KpiCard } from "./storage/KpiCard";
 import { LargestItemsTable } from "./storage/LargestItemsTable";
 import { SettingsTab } from "./storage/SettingsTab";
 import { StorageHeatmap } from "./storage/StorageHeatmap";
+import { ServerLoadPopup } from "./storage/ServerLoadPopup";
 import { StorageLogsDrawer } from "./storage/StorageLogsDrawer";
+import { useServerLoad } from "../hooks/useServerLoad";
 import { StorageTree } from "./storage/StorageTree";
 
 type Tab = "dashboard" | "explorer" | "heatmap" | "largest" | "cleanup" | "duplicates" | "settings";
@@ -56,6 +57,11 @@ export function StorageAnalyzerPage({
 }: StorageAnalyzerPageProps) {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [showLogs, setShowLogs] = useState(false);
+  const [popupDismissed, setPopupDismissed] = useState(false);
+  // After a scan ends we keep the popup visible for a few seconds so the user
+  // can see the "settled" load. This ref holds the linger timer.
+  const [lingerActive, setLingerActive] = useState(false);
+  const lingerTimerRef = useRef<number | undefined>(undefined);
   const {
     state,
     fetchOverview,
@@ -71,12 +77,38 @@ export function StorageAnalyzerPage({
     startFindDuplicates,
   } = useStorageAnalyzer();
 
+  // Server-load popup — visible while any scan runs, plus a 5 s "settle" window.
+  const scanning = state.deepScanning || state.duplicatesLoading;
+  useEffect(() => {
+    if (scanning) {
+      setLingerActive(true);
+      setPopupDismissed(false); // reset user-dismiss when a new scan starts
+      if (lingerTimerRef.current !== undefined) {
+        window.clearTimeout(lingerTimerRef.current);
+        lingerTimerRef.current = undefined;
+      }
+    } else if (lingerActive) {
+      lingerTimerRef.current = window.setTimeout(() => {
+        setLingerActive(false);
+        lingerTimerRef.current = undefined;
+      }, 5000);
+    }
+    return () => {
+      if (lingerTimerRef.current !== undefined) {
+        window.clearTimeout(lingerTimerRef.current);
+        lingerTimerRef.current = undefined;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanning]);
+  const popupVisible = (scanning || lingerActive) && !popupDismissed;
+  const serverLoad = useServerLoad(popupVisible);
+
   // Aggregate KPIs across mounts
   const totalBytes = state.mounts.reduce((s, m) => s + m.total, 0);
   const usedBytes = state.mounts.reduce((s, m) => s + m.used, 0);
   const freeBytes = state.mounts.reduce((s, m) => s + m.avail, 0);
   const usePct = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0;
-  const largestRootFolder = state.rootFolders[0] ?? null;
   const totalFileCount = state.ageHistogram?.total_files ?? null;
 
   function handleTabChange(tab: Tab) {
@@ -231,7 +263,6 @@ export function StorageAnalyzerPage({
               freeBytes={freeBytes}
               usePct={usePct}
               totalFileCount={totalFileCount}
-              largestRootFolder={largestRootFolder}
             />
           )}
 
@@ -337,6 +368,17 @@ export function StorageAnalyzerPage({
           }}
         />
       )}
+
+      {popupVisible && (
+        <ServerLoadPopup
+          latest={serverLoad.latest}
+          history={serverLoad.history}
+          stalled={serverLoad.stalled}
+          onDismiss={() => {
+            setPopupDismissed(true);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -350,7 +392,6 @@ interface DashboardTabProps {
   freeBytes: number;
   usePct: number;
   totalFileCount: number | null;
-  largestRootFolder: { path: string; size_bytes: number } | null;
 }
 
 function DashboardTab({
@@ -360,7 +401,6 @@ function DashboardTab({
   freeBytes,
   usePct,
   totalFileCount,
-  largestRootFolder,
 }: DashboardTabProps) {
   const overallTier = mountHealth(usePct);
   const tierColor = HEALTH_COLOR[overallTier];
@@ -407,12 +447,6 @@ function DashboardTab({
               value={totalFileCount !== null ? totalFileCount.toLocaleString() : "—"}
               sub={totalFileCount === null ? "Run Deep Scan" : undefined}
               icon={<ScrollText size={14} />}
-            />
-            <KpiCard
-              label="Largest Root Folder"
-              value={largestRootFolder ? formatBytes(largestRootFolder.size_bytes) : "—"}
-              sub={largestRootFolder?.path}
-              icon={<Folder size={14} />}
             />
           </div>
         )}
@@ -512,67 +546,6 @@ function DashboardTab({
         </section>
       )}
 
-      {state.rootFolders.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-text-faint">
-            Root Folder Breakdown
-            {state.lastDeepScan && (
-              <span className="ml-2 font-normal normal-case text-text-faint">
-                — scanned {new Date(state.lastDeepScan).toLocaleTimeString()}
-              </span>
-            )}
-          </h2>
-          <div className="overflow-hidden rounded-xl border border-border-raised">
-            <table className="w-full border-collapse text-[12px]">
-              <thead>
-                <tr
-                  className="border-b text-left"
-                  style={{ borderColor: "#dedad3", background: "#ece9e3" }}
-                >
-                  <th className="px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">
-                    Path
-                  </th>
-                  <th className="px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">
-                    Size
-                  </th>
-                  <th className="w-48 px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">
-                    Share
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.rootFolders.slice(0, 20).map((f) => {
-                  const ratio =
-                    state.rootFolders.length > 0
-                      ? f.size_bytes / (state.rootFolders[0]?.size_bytes || 1)
-                      : 0;
-                  return (
-                    <tr
-                      key={f.path}
-                      className="border-b transition-colors hover:bg-surface-chip"
-                      style={{ borderColor: "#e5e2db" }}
-                    >
-                      <td className="px-4 py-2.5 font-mono text-text-primary">{f.path}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-text-secondary">
-                        {formatBytes(f.size_bytes)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="h-1.5 overflow-hidden rounded-full bg-surface-chip">
-                          <div
-                            className="h-full rounded-full"
-                            style={{ width: `${(ratio * 100).toFixed(2)}%`, background: "#3f7be0" }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
       {/* ── Phase 3 charts ───────────────────────────────────────────────── */}
 
       <section>
@@ -581,15 +554,6 @@ function DashboardTab({
         </h2>
         <div className="rounded-xl border border-border-raised bg-surface-pane p-5">
           <CategoryDonut categories={state.categories} />
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-text-faint">
-          Top Folders
-        </h2>
-        <div className="rounded-xl border border-border-raised bg-surface-pane p-5">
-          <TopFoldersBar folders={state.rootFolders} totalBytes={totalBytes} />
         </div>
       </section>
 

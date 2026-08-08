@@ -5,6 +5,9 @@ export interface CategoryBucket {
   bytes: number;
   color: string;
   paths: string[];
+  /** The individual (path, size) contributions to this bucket — used by the
+   *  Dashboard legend to show WHICH paths make up each category. */
+  entries: FolderSize[];
 }
 
 // Ordered rules: first match wins. Each rule maps a path prefix to a category.
@@ -67,12 +70,19 @@ export function computeCategories(sizes: FolderSize[]): CategoryBucket[] {
         bytes: 0,
         color: CATEGORY_COLORS[cat] ?? CATEGORY_COLORS.Other,
         paths: [],
+        entries: [],
       });
     }
     const b = buckets.get(cat);
     if (!b) continue;
     b.bytes += entry.size_bytes;
     b.paths.push(entry.path);
+    b.entries.push(entry);
+  }
+
+  // Sort each bucket's entries by size desc so the biggest contributor appears first.
+  for (const b of buckets.values()) {
+    b.entries.sort((a, b) => b.size_bytes - a.size_bytes);
   }
 
   return [...buckets.values()].filter((b) => b.bytes > 0).sort((a, b) => b.bytes - a.bytes);
