@@ -474,6 +474,97 @@ pub async fn storage_check_sudo(state: tauri::State<'_, SshState>) -> Result<boo
     .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
 }
 
+/// Shape returned by [`preset_reclaim_query`]. Used by both `storage_cleanup_estimate`
+/// and `storage_cleanup_preview` so the two always report the same number.
+struct PresetReclaimQuery {
+    /// Shell snippet that returns `__YES__` if the preset applies on this server
+    /// (e.g. `command -v journalctl`). Empty string = always available.
+    avail_check: &'static str,
+    /// Shell snippet that prints a single integer: reclaimable bytes for this preset.
+    size_query: &'static str,
+    /// The exact command that `storage_cleanup_execute` will run.
+    execute_cmd: &'static str,
+    /// True if the execute command needs sudo.
+    sudo_required: bool,
+}
+
+fn preset_reclaim_query(target: &str) -> Option<PresetReclaimQuery> {
+    let q = match target {
+        // Journal vacuum: `journalctl --disk-usage` returns e.g. "Archived and active journals take up 3.2G in the file system."
+        // We want the number of bytes above 100 MB (what vacuum will free). Simpler
+        // approximation: sum of ONLY archived + rotated journals (what vacuum actually
+        // deletes). Active journals aren't touched.
+        "journal-vacuum" => PresetReclaimQuery {
+            avail_check: "command -v journalctl",
+            size_query: "find /var/log/journal /run/log/journal -type f \\( -name '*.journal~' -o -name 'system@*.journal' -o -name 'user-*@*.journal' \\) -printf '%s\\n' 2>/dev/null | awk '{s+=$1} END{print s+0}'",
+            execute_cmd: "journalctl --vacuum-size=100M",
+            sudo_required: false,
+        },
+        "apt-cache" => PresetReclaimQuery {
+            avail_check: "command -v apt-get",
+            size_query: "du -sb /var/cache/apt/archives/ 2>/dev/null | awk '{print $1+0}'",
+            execute_cmd: "apt-get clean -y",
+            sudo_required: true,
+        },
+        "dnf-cache" => PresetReclaimQuery {
+            avail_check: "command -v dnf",
+            size_query: "du -sb /var/cache/dnf/ 2>/dev/null | awk '{print $1+0}'",
+            execute_cmd: "dnf clean all -y",
+            sudo_required: true,
+        },
+        "yum-cache" => PresetReclaimQuery {
+            avail_check: "command -v yum",
+            size_query: "du -sb /var/cache/yum/ 2>/dev/null | awk '{print $1+0}'",
+            execute_cmd: "yum clean all -y",
+            sudo_required: true,
+        },
+        // Docker prune: `docker system df` reports authoritative "reclaimable" bytes
+        // per resource class. We sum Images + Containers + Build Cache (volumes are
+        // covered by the separate docker-volumes-prune preset).
+        // Output columns: TYPE / TOTAL / ACTIVE / SIZE / RECLAIMABLE (last col has "1.5GB (100%)")
+        "docker-prune" => PresetReclaimQuery {
+            avail_check: "command -v docker",
+            size_query: "docker system df --format '{{.Type}}\\t{{.Reclaimable}}' 2>/dev/null | awk -F'\\t' 'BEGIN{s=0} $1==\"Images\" || $1==\"Containers\" || $1==\"Build Cache\" { \
+                r=$2; gsub(/ \\(.*/,\"\",r); \
+                n=r+0; u=substr(r,length(n \"\")+1); \
+                if(u==\"kB\"||u==\"KB\") n*=1024; \
+                else if(u==\"MB\") n*=1048576; \
+                else if(u==\"GB\") n*=1073741824; \
+                else if(u==\"TB\") n*=1099511627776; \
+                s+=n } END { printf \"%d\\n\", s }'",
+            execute_cmd: "docker system prune -af",
+            sudo_required: false,
+        },
+        "docker-volumes-prune" => PresetReclaimQuery {
+            avail_check: "command -v docker",
+            // Dangling volumes only — matches what `prune -af --volumes` actually removes.
+            size_query: "docker volume ls -f dangling=true -q 2>/dev/null | while read v; do du -sb \"/var/lib/docker/volumes/$v/_data\" 2>/dev/null | awk '{print $1+0}'; done | awk '{s+=$1} END{print s+0}'",
+            execute_cmd: "docker system prune -af --volumes",
+            sudo_required: false,
+        },
+        "tmp-old" => PresetReclaimQuery {
+            avail_check: "",
+            size_query: "find /tmp -maxdepth 3 -type f -atime +90 -printf '%s\\n' 2>/dev/null | awk '{s+=$1} END{print s+0}'",
+            execute_cmd: "find /tmp -maxdepth 3 -type f -atime +90 -delete",
+            sudo_required: false,
+        },
+        "coredumps" => PresetReclaimQuery {
+            avail_check: "",
+            size_query: "find /var/crash /var/core /tmp -maxdepth 3 -type f \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) -printf '%s\\n' 2>/dev/null | awk '{s+=$1} END{print s+0}'",
+            execute_cmd: "find /var/crash /var/core /tmp -maxdepth 3 -type f \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) -delete",
+            sudo_required: false,
+        },
+        "old-logs" => PresetReclaimQuery {
+            avail_check: "",
+            size_query: "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) -printf '%s\\n' 2>/dev/null | awk '{s+=$1} END{print s+0}'",
+            execute_cmd: "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) -delete",
+            sudo_required: true,
+        },
+        _ => return None,
+    };
+    Some(q)
+}
+
 /// Estimate reclaimable bytes for a cleanup preset without executing it.
 #[tauri::command]
 pub async fn storage_cleanup_estimate(
@@ -482,73 +573,19 @@ pub async fn storage_cleanup_estimate(
 ) -> Result<CleanupEstimate, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh.lock().map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
         let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
 
-        let (avail_check, estimate_cmd, execute_preview, sudo_req): (&str, &str, &str, bool) =
-            match target.as_str() {
-                "journal-vacuum" => (
-                    "command -v journalctl",
-                    "du -sb /var/log/journal/ /run/log/journal/ 2>/dev/null | awk '{s+=$1} END{print s+0}'",
-                    "journalctl --vacuum-size=100M",
-                    false,
-                ),
-                "apt-cache" => (
-                    "command -v apt-get",
-                    "du -sb /var/cache/apt/archives/ 2>/dev/null | awk '{print $1+0}'",
-                    "apt-get clean -y",
-                    true,
-                ),
-                "dnf-cache" => (
-                    "command -v dnf",
-                    "du -sb /var/cache/dnf/ 2>/dev/null | awk '{print $1+0}'",
-                    "dnf clean all -y",
-                    true,
-                ),
-                "yum-cache" => (
-                    "command -v yum",
-                    "du -sb /var/cache/yum/ 2>/dev/null | awk '{print $1+0}'",
-                    "yum clean all -y",
-                    true,
-                ),
-                "docker-prune" => (
-                    "command -v docker",
-                    "du -sb /var/lib/docker/overlay2/ /var/lib/docker/tmp/ 2>/dev/null | awk '{s+=$1} END{print s+0}'",
-                    "docker system prune -af",
-                    false,
-                ),
-                "docker-volumes-prune" => (
-                    "command -v docker",
-                    "du -sb /var/lib/docker/volumes/ 2>/dev/null | awk '{print $1+0}'",
-                    "docker system prune -af --volumes",
-                    false,
-                ),
-                "tmp-old" => (
-                    "",
-                    "find /tmp -maxdepth 3 -type f -atime +90 2>/dev/null | xargs -d '\\n' du -sb 2>/dev/null | awk '{s+=$1} END{print s+0}'",
-                    "find /tmp -maxdepth 3 -type f -atime +90 -delete",
-                    false,
-                ),
-                "coredumps" => (
-                    "",
-                    "find /var/crash /var/core /tmp -maxdepth 3 -type f \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) 2>/dev/null | xargs -d '\\n' du -sb 2>/dev/null | awk '{s+=$1} END{print s+0}'",
-                    "find /var/crash /var/core /tmp -maxdepth 3 -type f \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) -delete",
-                    false,
-                ),
-                "old-logs" => (
-                    "",
-                    "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) 2>/dev/null | xargs -d '\\n' du -sb 2>/dev/null | awk '{s+=$1} END{print s+0}'",
-                    "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) -delete",
-                    true,
-                ),
-                _ => return Err(AppError::internal(format!("Unknown cleanup target: {target}"))),
-            };
+        let query = preset_reclaim_query(&target)
+            .ok_or_else(|| AppError::internal(format!("Unknown cleanup target: {target}")))?;
 
-        let available = check_avail(bundle, avail_check);
+        let available = check_avail(bundle, query.avail_check);
 
         let estimated_bytes = if available {
             bundle
-                .exec(estimate_cmd)
+                .exec(query.size_query)
                 .ok()
                 .and_then(|out| out.trim().parse::<u64>().ok())
                 .unwrap_or(0)
@@ -559,8 +596,8 @@ pub async fn storage_cleanup_estimate(
         Ok(CleanupEstimate {
             target,
             estimated_bytes,
-            command_preview: execute_preview.to_string(),
-            sudo_required: sudo_req,
+            command_preview: query.execute_cmd.to_string(),
+            sudo_required: query.sudo_required,
             available,
         })
     })
@@ -577,27 +614,15 @@ pub async fn storage_cleanup_execute(
 ) -> Result<CleanupResult, AppError> {
     let ssh = Arc::clone(&state.inner);
     tauri::async_runtime::spawn_blocking(move || {
-        let guard = ssh.lock().map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
         let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
 
-        let (execute_cmd, sudo_required): (&str, bool) = match target.as_str() {
-            "journal-vacuum" => ("journalctl --vacuum-size=100M", false),
-            "apt-cache" => ("apt-get clean -y", true),
-            "dnf-cache" => ("dnf clean all -y", true),
-            "yum-cache" => ("yum clean all -y", true),
-            "docker-prune" => ("docker system prune -af", false),
-            "docker-volumes-prune" => ("docker system prune -af --volumes", false),
-            "tmp-old" => ("find /tmp -maxdepth 3 -type f -atime +90 -delete", false),
-            "coredumps" => (
-                "find /var/crash /var/core /tmp -maxdepth 3 -type f \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) -delete",
-                false,
-            ),
-            "old-logs" => (
-                "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) -delete",
-                true,
-            ),
-            _ => return Err(AppError::internal(format!("Unknown cleanup target: {target}"))),
-        };
+        let query = preset_reclaim_query(&target)
+            .ok_or_else(|| AppError::internal(format!("Unknown cleanup target: {target}")))?;
+        let execute_cmd = query.execute_cmd;
+        let sudo_required = query.sudo_required;
 
         let command_run = if sudo_required {
             match sudo_password.as_deref().filter(|p| !p.is_empty()) {
@@ -665,6 +690,28 @@ pub struct CleanupPreview {
 }
 
 const PREVIEW_ITEM_CAP: usize = 500;
+
+/// Parse a size string like "12.3MB", "4.2 GB", "142kB" into bytes.
+/// Returns 0 for unrecognised input (docker sometimes emits "0B" for pending pulls).
+fn parse_docker_size(s: &str) -> u64 {
+    let s = s.trim();
+    if s.is_empty() {
+        return 0;
+    }
+    // Split into leading number + trailing unit
+    let split = s.find(|c: char| c.is_alphabetic()).unwrap_or(s.len());
+    let (num_str, unit) = s.split_at(split);
+    let num: f64 = num_str.trim().parse().unwrap_or(0.0);
+    let mult: f64 = match unit.trim().to_uppercase().as_str() {
+        "B" | "" => 1.0,
+        "KB" | "K" => 1024.0,
+        "MB" | "M" => 1024.0 * 1024.0,
+        "GB" | "G" => 1024.0 * 1024.0 * 1024.0,
+        "TB" | "T" => 1024.0_f64.powi(4),
+        _ => 1.0,
+    };
+    (num * mult) as u64
+}
 
 fn parse_size_path_lines(out: &str) -> Vec<CleanupItem> {
     out.lines()
@@ -751,11 +798,14 @@ pub async fn storage_cleanup_preview(
                 for line in containers.lines() {
                     let cols: Vec<&str> = line.split('\t').collect();
                     if cols.len() < 5 { continue; }
+                    // {{.Size}} looks like "42MB (virtual 89MB)" — leading number is
+                    // the writable-layer delta (what prune actually reclaims).
+                    let size_bytes = parse_docker_size(cols[4].split_whitespace().next().unwrap_or(""));
                     items.push(CleanupItem {
                         path: format!("container: {}", cols[1]),
-                        size_bytes: 0,
+                        size_bytes,
                         kind: "container".to_string(),
-                        note: Some(format!("{} — {} — size {}", cols[2], cols[3], cols[4])),
+                        note: Some(format!("{} — {}", cols[2], cols[3])),
                     });
                 }
 
@@ -773,11 +823,12 @@ pub async fn storage_cleanup_preview(
                     let repo_tag = cols[1];
                     let is_dangling = repo_tag == "<none>:<none>";
                     if !is_dangling && used_set.contains(repo_tag) { continue; }
+                    let size_bytes = parse_docker_size(cols[2]);
                     items.push(CleanupItem {
                         path: format!("image: {}", repo_tag),
-                        size_bytes: 0,
+                        size_bytes,
                         kind: "image".to_string(),
-                        note: Some(format!("id {} — {} — {}", cols[0], cols[2], if is_dangling { "dangling" } else { "unreferenced" })),
+                        note: Some(format!("id {} — {}", cols[0], if is_dangling { "dangling" } else { "unreferenced" })),
                     });
                 }
 
@@ -872,7 +923,14 @@ pub async fn storage_cleanup_preview(
             _ => return Err(AppError::internal(format!("Unknown cleanup target: {target}"))),
         };
 
-        let total_bytes: u64 = items.iter().map(|i| i.size_bytes).sum();
+        // Authoritative reclaimable-bytes number comes from the same query as the
+        // Estimate card — so the two always agree. Preview items are capped at 500
+        // and their per-item sizes may under-report (esp. docker), which is why we
+        // don't just sum them.
+        let total_bytes: u64 = preset_reclaim_query(&target)
+            .and_then(|q| bundle.exec(q.size_query).ok())
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .unwrap_or(0);
         let item_count = items.len();
         let truncated = item_count >= PREVIEW_ITEM_CAP;
 

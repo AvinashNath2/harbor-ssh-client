@@ -460,25 +460,28 @@ function PreviewModal({
               )}
 
               {/* Summary strip */}
-              <div className="flex items-center gap-4 rounded-lg border border-border-input bg-surface-colheader px-3 py-2 text-[12px]">
-                <span>
-                  <span className="font-mono font-semibold text-text-primary">
-                    {data.itemCount.toLocaleString()}
-                  </span>{" "}
-                  <span className="text-text-faint">item{data.itemCount === 1 ? "" : "s"}</span>
-                </span>
-                <span className="text-text-faint">·</span>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border-input bg-surface-colheader px-3 py-2 text-[12px]">
                 <span>
                   <span className="font-mono font-semibold text-text-primary">
                     {formatBytes(data.totalBytes)}
                   </span>{" "}
-                  <span className="text-text-faint">total</span>
+                  <span className="text-text-faint">will be freed</span>
+                </span>
+                <span className="text-text-faint">·</span>
+                <span>
+                  <span className="font-mono font-semibold text-text-primary">
+                    {data.itemCount.toLocaleString()}
+                  </span>{" "}
+                  <span className="text-text-faint">
+                    item{data.itemCount === 1 ? "" : "s"} shown
+                  </span>
                 </span>
                 {data.truncated && (
                   <>
                     <span className="text-text-faint">·</span>
                     <span className="text-amber-700">
-                      Listing capped at {data.itemCount.toLocaleString()} — more items may exist
+                      Listing capped at {data.itemCount.toLocaleString()} — more items may exist,
+                      but the total above accounts for all of them
                     </span>
                   </>
                 )}
