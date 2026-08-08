@@ -52,7 +52,8 @@ pub use ssh_config::parse_ssh_config;
 pub use status::{connection_status, ping_connection};
 pub use storage::{
     storage_age_histogram, storage_category_sizes, storage_check_sudo, storage_cleanup_estimate,
-    storage_cleanup_execute, storage_find_duplicates, storage_largest_items, storage_overview,
-    storage_scan_path, storage_scan_root, storage_system_info, storage_system_load,
+    storage_cleanup_execute, storage_cleanup_preview, storage_find_duplicates,
+    storage_largest_items, storage_overview, storage_scan_path, storage_scan_root,
+    storage_system_info, storage_system_load,
 };
 pub use terminal::{close_terminal, open_terminal, resize_terminal, write_terminal};

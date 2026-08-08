@@ -22,9 +22,10 @@ use commands::{
     rename_local_path, rename_path, resize_terminal, reveal_in_finder, save_download, save_profile,
     start_port_forward, stat_local_path, stat_path, stop_all_port_forwards, stop_port_forward,
     storage_age_histogram, storage_category_sizes, storage_check_sudo, storage_cleanup_estimate,
-    storage_cleanup_execute, storage_find_duplicates, storage_largest_items, storage_overview,
-    storage_scan_path, storage_scan_root, storage_system_info, storage_system_load,
-    test_connection, upload_file, upload_file_queued, write_file_text, write_terminal,
+    storage_cleanup_execute, storage_cleanup_preview, storage_find_duplicates,
+    storage_largest_items, storage_overview, storage_scan_path, storage_scan_root,
+    storage_system_info, storage_system_load, test_connection, upload_file, upload_file_queued,
+    write_file_text, write_terminal,
 };
 use ssh::SshState;
 
@@ -158,6 +159,7 @@ pub fn run() {
             storage_check_sudo,
             storage_cleanup_estimate,
             storage_cleanup_execute,
+            storage_cleanup_preview,
             storage_find_duplicates,
         ])
         .run(tauri::generate_context!())

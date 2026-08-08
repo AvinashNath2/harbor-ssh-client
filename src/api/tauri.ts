@@ -731,6 +731,23 @@ export interface CleanupResult {
   sudo_used: boolean;
 }
 
+export interface CleanupItem {
+  path: string;
+  sizeBytes: number;
+  kind: "file" | "container" | "image" | "network" | "volume" | "info";
+  note?: string;
+}
+
+export interface CleanupPreview {
+  target: string;
+  description: string;
+  items: CleanupItem[];
+  totalBytes: number;
+  itemCount: number;
+  truncated: boolean;
+  notes: string[];
+}
+
 export interface DuplicateFile {
   path: string;
   size_bytes: number;
@@ -756,6 +773,10 @@ export async function storageCleanupExecute(
   sudoPassword?: string,
 ): Promise<CleanupResult> {
   return invoke<CleanupResult>("storage_cleanup_execute", { target, sudoPassword });
+}
+
+export async function storageCleanupPreview(target: string): Promise<CleanupPreview> {
+  return invoke<CleanupPreview>("storage_cleanup_preview", { target });
 }
 
 export async function storageFindDuplicates(

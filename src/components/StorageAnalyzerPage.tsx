@@ -12,7 +12,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useStorageAnalyzer } from "../hooks/useStorageAnalyzer";
 import { formatBytes, HEALTH_COLOR, mountHealth } from "../utils/storageHealth";
 import { AgeHistogramBar } from "./storage/AgeHistogram";
@@ -55,11 +55,6 @@ export function StorageAnalyzerPage({
 }: StorageAnalyzerPageProps) {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [showLogs, setShowLogs] = useState(false);
-  const [popupDismissed, setPopupDismissed] = useState(false);
-  // After a scan ends we keep the popup visible for a few seconds so the user
-  // can see the "settled" load. This ref holds the linger timer.
-  const [lingerActive, setLingerActive] = useState(false);
-  const lingerTimerRef = useRef<number | undefined>(undefined);
   const {
     state,
     fetchOverview,
@@ -71,36 +66,14 @@ export function StorageAnalyzerPage({
     fetchLargestItems,
     checkSudoAvailable,
     runCleanupEstimate,
+    runCleanupPreview,
     runCleanupExecute,
     startFindDuplicates,
   } = useStorageAnalyzer();
 
-  // Server-load popup — visible while any scan runs, plus a 5 s "settle" window.
-  const scanning = state.deepScanning || state.duplicatesLoading;
-  useEffect(() => {
-    if (scanning) {
-      setLingerActive(true);
-      setPopupDismissed(false); // reset user-dismiss when a new scan starts
-      if (lingerTimerRef.current !== undefined) {
-        window.clearTimeout(lingerTimerRef.current);
-        lingerTimerRef.current = undefined;
-      }
-    } else if (lingerActive) {
-      lingerTimerRef.current = window.setTimeout(() => {
-        setLingerActive(false);
-        lingerTimerRef.current = undefined;
-      }, 5000);
-    }
-    return () => {
-      if (lingerTimerRef.current !== undefined) {
-        window.clearTimeout(lingerTimerRef.current);
-        lingerTimerRef.current = undefined;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanning]);
-  const popupVisible = (scanning || lingerActive) && !popupDismissed;
-  const serverLoad = useServerLoad(popupVisible);
+  // Server-load box — always polling while the Data Profiler window is open,
+  // so the sidebar strip stays live even when no scan is running.
+  const serverLoad = useServerLoad(true);
 
   // Aggregate KPIs across mounts
   const totalBytes = state.mounts.reduce((s, m) => s + m.total, 0);
@@ -249,6 +222,12 @@ export function StorageAnalyzerPage({
               </button>
             );
           })}
+          {/* Live server-load box — always visible in the empty sidebar space */}
+          <ServerLoadPopup
+            latest={serverLoad.latest}
+            history={serverLoad.history}
+            stalled={serverLoad.stalled}
+          />
         </aside>
 
         {/* Main content */}
@@ -290,6 +269,7 @@ export function StorageAnalyzerPage({
               sudoAvailable={state.sudoAvailable}
               onCheckSudo={() => void checkSudoAvailable()}
               onEstimate={runCleanupEstimate}
+              onPreview={runCleanupPreview}
               onExecute={runCleanupExecute}
             />
           )}
@@ -359,17 +339,6 @@ export function StorageAnalyzerPage({
           logs={state.logs}
           onClose={() => {
             setShowLogs(false);
-          }}
-        />
-      )}
-
-      {popupVisible && (
-        <ServerLoadPopup
-          latest={serverLoad.latest}
-          history={serverLoad.history}
-          stalled={serverLoad.stalled}
-          onDismiss={() => {
-            setPopupDismissed(true);
           }}
         />
       )}

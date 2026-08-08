@@ -5,6 +5,7 @@ import {
   storageCheckSudo,
   storageCleanupEstimate,
   storageCleanupExecute,
+  storageCleanupPreview,
   storageFindDuplicates,
   storageLargestItems,
   storageOverview,
@@ -13,6 +14,7 @@ import {
   storageSystemInfo,
   type AgeHistogram,
   type CleanupEstimate,
+  type CleanupPreview,
   type CleanupResult,
   type DiskMount,
   type DuplicateGroup,
@@ -539,6 +541,40 @@ export function useStorageAnalyzer() {
     [appendLog, flushLogs],
   );
 
+  const runCleanupPreview = useCallback(
+    async (target: string): Promise<CleanupPreview | null> => {
+      if (!mountedRef.current) return null;
+      const cycle = ++_fetchCycle;
+      const l: StorageLogEntry[] = [];
+      appendLog(
+        { level: "info", source: "cleanup-preview", message: `Listing items for ${target}…` },
+        cycle,
+        l,
+      );
+      flushLogs(l);
+      const t0 = Date.now();
+      const result = await safe("storage_cleanup_preview", () => storageCleanupPreview(target));
+      const dt = Date.now() - t0;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (!mountedRef.current) return null;
+      const l2: StorageLogEntry[] = [];
+      appendLog(
+        {
+          level: result ? "info" : "warn",
+          source: "cleanup-preview",
+          message: result
+            ? `${target}: ${result.itemCount.toString()} item(s), ${result.totalBytes.toLocaleString()} bytes — ${String(dt)}ms`
+            : `preview failed for ${target}`,
+        },
+        cycle,
+        l2,
+      );
+      flushLogs(l2);
+      return result;
+    },
+    [appendLog, flushLogs],
+  );
+
   const runCleanupExecute = useCallback(
     async (target: string, sudoPassword?: string): Promise<CleanupResult | null> => {
       if (!mountedRef.current) return null;
@@ -649,6 +685,7 @@ export function useStorageAnalyzer() {
     fetchLargestItems,
     checkSudoAvailable,
     runCleanupEstimate,
+    runCleanupPreview,
     runCleanupExecute,
     startFindDuplicates,
   };

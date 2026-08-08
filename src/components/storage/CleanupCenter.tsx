@@ -3,7 +3,9 @@ import {
   AlertTriangle,
   Box,
   CheckCircle2,
+  Eye,
   FileText,
+  Info,
   Loader2,
   Package,
   RefreshCw,
@@ -13,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CleanupEstimate, CleanupResult } from "../../api";
+import type { CleanupEstimate, CleanupItem, CleanupPreview, CleanupResult } from "../../api";
 import { formatBytes } from "../../utils/storageHealth";
 
 interface PresetDef {
@@ -116,6 +118,7 @@ interface CleanupCenterProps {
   sudoAvailable: boolean | null;
   onCheckSudo: () => void;
   onEstimate: (target: string) => Promise<CleanupEstimate | null>;
+  onPreview: (target: string) => Promise<CleanupPreview | null>;
   onExecute: (target: string, sudoPassword?: string) => Promise<CleanupResult | null>;
 }
 
@@ -123,11 +126,28 @@ export function CleanupCenter({
   sudoAvailable,
   onCheckSudo,
   onEstimate,
+  onPreview,
   onExecute,
 }: CleanupCenterProps) {
   const [estimates, setEstimates] = useState<Record<string, CleanupEstimate>>({});
   const [estimating, setEstimating] = useState<Record<string, boolean>>({});
   const [selectedPreset, setSelectedPreset] = useState<PresetDef | null>(null);
+  // Preview modal state
+  const [previewPreset, setPreviewPreset] = useState<PresetDef | null>(null);
+  const [previewData, setPreviewData] = useState<CleanupPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const openPreview = useCallback(
+    async (preset: PresetDef) => {
+      setPreviewPreset(preset);
+      setPreviewData(null);
+      setPreviewLoading(true);
+      const p = await onPreview(preset.target);
+      setPreviewData(p);
+      setPreviewLoading(false);
+    },
+    [onPreview],
+  );
   const [estimatingAll, setEstimatingAll] = useState(false);
 
   const estimateOne = useCallback(
@@ -269,6 +289,17 @@ export function CleanupCenter({
                   )}
                   <button
                     onClick={() => {
+                      void openPreview(preset);
+                    }}
+                    disabled={notAvail}
+                    className="flex items-center gap-1 rounded-lg border border-border-input px-2.5 py-1 text-[11.5px] font-medium text-text-secondary transition-colors hover:bg-surface-chip hover:text-text-primary disabled:opacity-40"
+                    title="See exactly which files / items this preset would remove"
+                  >
+                    <Eye size={11} strokeWidth={2} />
+                    Preview
+                  </button>
+                  <button
+                    onClick={() => {
                       setSelectedPreset(preset);
                     }}
                     disabled={notAvail}
@@ -296,6 +327,237 @@ export function CleanupCenter({
           }}
         />
       )}
+
+      {/* Preview modal — descriptive list of items that would be removed */}
+      {previewPreset && (
+        <PreviewModal
+          preset={previewPreset}
+          data={previewData}
+          loading={previewLoading}
+          onClose={() => {
+            setPreviewPreset(null);
+            setPreviewData(null);
+          }}
+          onClean={() => {
+            const p = previewPreset;
+            setPreviewPreset(null);
+            setPreviewData(null);
+            setSelectedPreset(p);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Preview modal — shows what a preset would actually delete ─────────────────
+
+function iconForKind(kind: CleanupItem["kind"]) {
+  switch (kind) {
+    case "container":
+      return <Box size={12} className="text-blue-600" />;
+    case "image":
+      return <Package size={12} className="text-purple-600" />;
+    case "network":
+      return <RefreshCw size={12} className="text-cyan-600" />;
+    case "volume":
+      return <Package size={12} className="text-orange-600" />;
+    case "info":
+      return <Info size={12} className="text-text-faint" />;
+    default:
+      return <FileText size={12} className="text-text-faint" />;
+  }
+}
+
+function PreviewModal({
+  preset,
+  data,
+  loading,
+  onClose,
+  onClean,
+}: {
+  preset: PresetDef;
+  data: CleanupPreview | null;
+  loading: boolean;
+  onClose: () => void;
+  onClean: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="flex max-h-[85vh] w-[720px] max-w-[92vw] flex-col overflow-hidden rounded-modal border border-border-raised bg-surface-pane"
+        style={{ boxShadow: "0 40px 100px -20px rgba(20,18,15,0.55)" }}
+      >
+        {/* Header */}
+        <div className="flex flex-none items-start gap-3 border-b border-border px-5 py-3">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[rgba(47,107,219,0.10)]">
+            <preset.Icon size={16} className="text-[#3f7be0]" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[14px] font-semibold text-text-primary">
+                Preview: {preset.name}
+              </span>
+              <span
+                className={`rounded-sm border px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide ${RISK_STYLE[preset.risk].cls}`}
+              >
+                {RISK_STYLE[preset.risk].label}
+              </span>
+            </div>
+            <p className="mt-0.5 text-[11.5px] text-text-faint">
+              Nothing has been deleted yet — this is what the Clean button would remove.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
+            title="Close"
+          >
+            <X size={14} strokeWidth={2.2} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {loading && (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-text-faint">
+              <Loader2 size={20} className="animate-spin" />
+              <span className="text-[12px]">Listing items on the server…</span>
+            </div>
+          )}
+
+          {!loading && !data && (
+            <div className="py-16 text-center text-[13px] text-danger">
+              Failed to load preview — check the Storage Logs drawer for details.
+            </div>
+          )}
+
+          {!loading && data && (
+            <div className="space-y-4">
+              {/* Descriptive header */}
+              <div className="rounded-lg bg-surface-chip px-3 py-2.5 text-[12px] leading-relaxed text-text-secondary">
+                {data.description}
+              </div>
+
+              {/* Notes / warnings */}
+              {data.notes.length > 0 && (
+                <div className="space-y-1.5">
+                  {data.notes.map((note, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800"
+                    >
+                      <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+                      <span>{note}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Summary strip */}
+              <div className="flex items-center gap-4 rounded-lg border border-border-input bg-surface-colheader px-3 py-2 text-[12px]">
+                <span>
+                  <span className="font-mono font-semibold text-text-primary">
+                    {data.itemCount.toLocaleString()}
+                  </span>{" "}
+                  <span className="text-text-faint">item{data.itemCount === 1 ? "" : "s"}</span>
+                </span>
+                <span className="text-text-faint">·</span>
+                <span>
+                  <span className="font-mono font-semibold text-text-primary">
+                    {formatBytes(data.totalBytes)}
+                  </span>{" "}
+                  <span className="text-text-faint">total</span>
+                </span>
+                {data.truncated && (
+                  <>
+                    <span className="text-text-faint">·</span>
+                    <span className="text-amber-700">
+                      Listing capped at {data.itemCount.toLocaleString()} — more items may exist
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Items list */}
+              {data.items.length === 0 ? (
+                <div className="py-8 text-center text-[12px] text-text-faint">
+                  Nothing to remove — the preset would run but find no matching items.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-lg border border-border-input">
+                  <table className="w-full border-collapse text-[11.5px]">
+                    <thead>
+                      <tr
+                        className="border-b text-left"
+                        style={{ borderColor: "#dedad3", background: "#ece9e3" }}
+                      >
+                        <th className="w-8 px-2 py-2"></th>
+                        <th className="px-3 py-2 font-semibold uppercase tracking-wide text-[10px] text-text-faint">
+                          Item
+                        </th>
+                        <th className="w-24 px-3 py-2 text-right font-semibold uppercase tracking-wide text-[10px] text-text-faint">
+                          Size
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.items.map((item, idx) => (
+                        <tr
+                          key={`${item.kind}-${item.path}-${idx.toString()}`}
+                          className="border-b transition-colors hover:bg-surface-chip"
+                          style={{ borderColor: "#e5e2db" }}
+                        >
+                          <td className="px-2 py-1.5 text-center">{iconForKind(item.kind)}</td>
+                          <td className="px-3 py-1.5">
+                            <div className="break-all font-mono text-text-primary">{item.path}</div>
+                            {item.note && (
+                              <div className="mt-0.5 text-[10.5px] text-text-tertiary">
+                                {item.note}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-text-secondary">
+                            {item.sizeBytes > 0 ? formatBytes(item.sizeBytes) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex flex-none items-center justify-between gap-3 border-t border-border px-5 py-3">
+          <span className="text-[11.5px] text-text-faint">
+            Preview is read-only — clicking Clean opens a countdown confirmation.
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-border-input px-3 py-1.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-chip"
+            >
+              Close
+            </button>
+            <button
+              onClick={onClean}
+              disabled={!data || data.itemCount === 0}
+              className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: "linear-gradient(135deg,#3f7be0,#2f6bdb)" }}
+            >
+              Clean now
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

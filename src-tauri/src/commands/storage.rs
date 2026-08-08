@@ -639,6 +639,257 @@ pub async fn storage_cleanup_execute(
     .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
 }
 
+// ── Cleanup preview — list what a preset would actually delete ────────────────
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanupItem {
+    pub path: String,
+    pub size_bytes: u64,
+    /// "file" | "container" | "image" | "network" | "volume" | "info"
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanupPreview {
+    pub target: String,
+    pub description: String,
+    pub items: Vec<CleanupItem>,
+    pub total_bytes: u64,
+    pub item_count: usize,
+    pub truncated: bool,
+    pub notes: Vec<String>,
+}
+
+const PREVIEW_ITEM_CAP: usize = 500;
+
+fn parse_size_path_lines(out: &str) -> Vec<CleanupItem> {
+    out.lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, '\t');
+            let size: u64 = parts.next()?.trim().parse().ok()?;
+            let path = parts.next()?.trim().to_string();
+            if path.is_empty() {
+                return None;
+            }
+            Some(CleanupItem {
+                path,
+                size_bytes: size,
+                kind: "file".to_string(),
+                note: None,
+            })
+        })
+        .collect()
+}
+
+/// List the exact files / docker objects a cleanup preset would remove — WITHOUT
+/// removing anything. Used by the Preview button in the Cleanup Center.
+#[tauri::command]
+pub async fn storage_cleanup_preview(
+    target: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<CleanupPreview, AppError> {
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let (description, notes, items): (String, Vec<String>, Vec<CleanupItem>) = match target
+            .as_str()
+        {
+            "journal-vacuum" => {
+                let desc = "Trims systemd's binary journal down to 100 MB by deleting the oldest archived journal files. Active journals (currently being written) are never touched, so no live logs are lost.".to_string();
+                let out = bundle.exec(
+                    "find /var/log/journal /run/log/journal -type f \\
+                        \\( -name '*.journal~' -o -name 'system@*.journal' -o -name 'user-*@*.journal' \\) \
+                        -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500",
+                ).unwrap_or_default();
+                let mut items = parse_size_path_lines(&out);
+                for it in &mut items {
+                    it.note = Some("archived journal — safe to remove".to_string());
+                }
+                let notes = vec![
+                    "Only archived / rotated journals are listed. The currently-active journal is kept.".to_string(),
+                ];
+                (desc, notes, items)
+            }
+            "apt-cache" => {
+                let desc = "Removes every downloaded .deb package cached in /var/cache/apt/archives. APT re-downloads what it needs next time you install something.".to_string();
+                let out = bundle.exec(
+                    "find /var/cache/apt/archives -maxdepth 1 -type f -name '*.deb' \
+                        -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500",
+                ).unwrap_or_default();
+                let items = parse_size_path_lines(&out);
+                (desc, Vec::new(), items)
+            }
+            "dnf-cache" | "yum-cache" => {
+                let root = if target == "dnf-cache" { "/var/cache/dnf" } else { "/var/cache/yum" };
+                let desc = format!(
+                    "Deletes all cached package metadata and downloaded RPMs under {root}. The package manager rebuilds its cache on next use."
+                );
+                let out = bundle.exec(&format!(
+                    "find {root} -type f -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500"
+                )).unwrap_or_default();
+                let items = parse_size_path_lines(&out);
+                (desc, Vec::new(), items)
+            }
+            "docker-prune" => {
+                let desc = "Runs `docker system prune -af` which removes: (1) all stopped containers, (2) unused container images (both dangling and unreferenced), (3) unused networks, (4) the build cache. Named volumes are NOT touched by this preset.".to_string();
+                let mut items = Vec::new();
+                let mut notes = Vec::new();
+
+                // Stopped containers
+                let containers = bundle.exec(
+                    "docker ps -a --filter status=exited --filter status=created --filter status=dead \
+                        --format '{{.ID}}\\t{{.Names}}\\t{{.Image}}\\t{{.Status}}\\t{{.Size}}' 2>/dev/null"
+                ).unwrap_or_default();
+                for line in containers.lines() {
+                    let cols: Vec<&str> = line.split('\t').collect();
+                    if cols.len() < 5 { continue; }
+                    items.push(CleanupItem {
+                        path: format!("container: {}", cols[1]),
+                        size_bytes: 0,
+                        kind: "container".to_string(),
+                        note: Some(format!("{} — {} — size {}", cols[2], cols[3], cols[4])),
+                    });
+                }
+
+                // Dangling + unreferenced images
+                let images = bundle.exec(
+                    "docker images -a --format '{{.ID}}\\t{{.Repository}}:{{.Tag}}\\t{{.Size}}' 2>/dev/null"
+                ).unwrap_or_default();
+                let used = bundle.exec(
+                    "docker ps -a --format '{{.Image}}' 2>/dev/null | sort -u"
+                ).unwrap_or_default();
+                let used_set: std::collections::HashSet<String> = used.lines().map(|s| s.trim().to_string()).collect();
+                for line in images.lines() {
+                    let cols: Vec<&str> = line.split('\t').collect();
+                    if cols.len() < 3 { continue; }
+                    let repo_tag = cols[1];
+                    let is_dangling = repo_tag == "<none>:<none>";
+                    if !is_dangling && used_set.contains(repo_tag) { continue; }
+                    items.push(CleanupItem {
+                        path: format!("image: {}", repo_tag),
+                        size_bytes: 0,
+                        kind: "image".to_string(),
+                        note: Some(format!("id {} — {} — {}", cols[0], cols[2], if is_dangling { "dangling" } else { "unreferenced" })),
+                    });
+                }
+
+                // Unused networks (skip default bridge/host/none)
+                let networks = bundle.exec(
+                    "docker network ls --format '{{.ID}}\\t{{.Name}}\\t{{.Driver}}' 2>/dev/null"
+                ).unwrap_or_default();
+                for line in networks.lines() {
+                    let cols: Vec<&str> = line.split('\t').collect();
+                    if cols.len() < 3 { continue; }
+                    let name = cols[1];
+                    if matches!(name, "bridge" | "host" | "none") { continue; }
+                    items.push(CleanupItem {
+                        path: format!("network: {name}"),
+                        size_bytes: 0,
+                        kind: "network".to_string(),
+                        note: Some(format!("id {} — driver {}", cols[0], cols[2])),
+                    });
+                }
+
+                // Build cache summary (single line, docker doesn't expose per-item easily)
+                if let Ok(bc) = bundle.exec("docker builder du 2>/dev/null | tail -1") {
+                    let bc = bc.trim();
+                    if !bc.is_empty() {
+                        notes.push(format!("Build cache: {bc}"));
+                    }
+                }
+                notes.push("Named volumes are NOT deleted by this preset. Use \"Docker prune + volumes\" if you want those included.".to_string());
+                (desc, notes, items)
+            }
+            "docker-volumes-prune" => {
+                let desc = "Same as `Docker prune`, PLUS deletes every named volume that is not currently attached to a container. This can permanently erase database data, persistent app state, etc. — review carefully.".to_string();
+                let mut items = Vec::new();
+                let mut notes = vec![
+                    "⚠ Volumes contain persistent data (databases, uploaded files, config). Once deleted, they are gone. Verify each entry.".to_string(),
+                ];
+
+                let volumes = bundle.exec(
+                    "docker volume ls -f dangling=true --format '{{.Name}}\\t{{.Driver}}' 2>/dev/null"
+                ).unwrap_or_default();
+                for line in volumes.lines() {
+                    let cols: Vec<&str> = line.split('\t').collect();
+                    if cols.is_empty() { continue; }
+                    let name = cols[0];
+                    if name.is_empty() { continue; }
+                    let driver = cols.get(1).unwrap_or(&"local");
+                    // Try to get size — /var/lib/docker/volumes/<name>/_data
+                    let size = bundle.exec(&format!(
+                        "du -sb /var/lib/docker/volumes/{name}/_data 2>/dev/null | awk '{{print $1+0}}'"
+                    )).ok().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
+                    items.push(CleanupItem {
+                        path: format!("volume: {name}"),
+                        size_bytes: size,
+                        kind: "volume".to_string(),
+                        note: Some(format!("driver {driver} — unattached")),
+                    });
+                }
+
+                if items.is_empty() {
+                    notes.push("No dangling volumes found — only the standard `docker system prune -af` items will be removed.".to_string());
+                }
+                (desc, notes, items)
+            }
+            "tmp-old" => {
+                let desc = "Deletes files in /tmp that haven't been accessed in the last 90 days (atime > 90). Recent tmp files, sockets, and active session data are untouched.".to_string();
+                let out = bundle.exec(
+                    "find /tmp -maxdepth 3 -type f -atime +90 -printf '%s\\t%p\\n' 2>/dev/null \
+                        | sort -rn | head -500",
+                ).unwrap_or_default();
+                let items = parse_size_path_lines(&out);
+                (desc, Vec::new(), items)
+            }
+            "coredumps" => {
+                let desc = "Removes crash dump files matching core.*, *.crash, and *.core under /var/crash, /var/core, and /tmp. These are diagnostic artefacts left behind by crashed processes.".to_string();
+                let out = bundle.exec(
+                    "find /var/crash /var/core /tmp -maxdepth 3 -type f \
+                        \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) \
+                        -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500",
+                ).unwrap_or_default();
+                let items = parse_size_path_lines(&out);
+                (desc, Vec::new(), items)
+            }
+            "old-logs" => {
+                let desc = "Removes rotated log files under /var/log (compressed .gz, and numbered rollovers like syslog.1, auth.log.4.gz). Active log files being written to right now are untouched.".to_string();
+                let out = bundle.exec(
+                    "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) \
+                        -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500",
+                ).unwrap_or_default();
+                let items = parse_size_path_lines(&out);
+                (desc, Vec::new(), items)
+            }
+            _ => return Err(AppError::internal(format!("Unknown cleanup target: {target}"))),
+        };
+
+        let total_bytes: u64 = items.iter().map(|i| i.size_bytes).sum();
+        let item_count = items.len();
+        let truncated = item_count >= PREVIEW_ITEM_CAP;
+
+        Ok(CleanupPreview {
+            target,
+            description,
+            items,
+            total_bytes,
+            item_count,
+            truncated,
+            notes,
+        })
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
 /// Find duplicate candidates under root by grouping files with identical byte sizes.
 ///
 /// This is a zero-byte-read algorithm — it only reads filesystem metadata (inode size

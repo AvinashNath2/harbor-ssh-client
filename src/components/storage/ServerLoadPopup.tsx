@@ -1,4 +1,4 @@
-import { Activity, X } from "lucide-react";
+import { Activity } from "lucide-react";
 import { useMemo } from "react";
 import type { ServerLoadSample } from "../../hooks/useServerLoad";
 
@@ -6,7 +6,6 @@ interface Props {
   latest: ServerLoadSample | null;
   history: ServerLoadSample[];
   stalled: boolean;
-  onDismiss: () => void;
 }
 
 function fmtGb(bytes: number): string {
@@ -26,7 +25,7 @@ function loadColor(pct: number): string {
   return "#b33c34"; // red
 }
 
-/** Tiny inline SVG sparkline. Renders `values` normalized 0..1. */
+/** Tiny inline SVG sparkline. Renders `values` as a line 0..max. */
 function Sparkline({
   values,
   color,
@@ -58,7 +57,11 @@ function Sparkline({
   );
 }
 
-export function ServerLoadPopup({ latest, history, stalled, onDismiss }: Props) {
+/**
+ * Compact server-load box designed to live in the Data Profiler's left sidebar.
+ * Always visible (no dismiss); polls whenever the Data Profiler window is open.
+ */
+export function ServerLoadPopup({ latest, history, stalled }: Props) {
   const cpuPct = latest ? loadPct(latest.loadOneM, latest.cpuCores) : 0;
   const memPct =
     latest && latest.memTotalBytes > 0 ? (latest.memUsedBytes / latest.memTotalBytes) * 100 : 0;
@@ -69,78 +72,66 @@ export function ServerLoadPopup({ latest, history, stalled, onDismiss }: Props) 
   );
 
   return (
-    <div
-      className="absolute bottom-4 right-4 z-50 w-[280px] rounded-modal border border-border-raised bg-surface-pane"
-      style={{ boxShadow: "0 16px 40px -12px rgba(20,18,15,0.28)" }}
-    >
+    <div className="mx-2 mt-auto rounded-lg border border-border bg-surface-pane">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <div className="flex items-center gap-2 text-[11.5px] font-semibold text-text-primary">
-          <Activity size={12} strokeWidth={2.2} className="text-accent-dark" />
+      <div className="flex items-center gap-1.5 border-b border-border px-2.5 py-1.5">
+        <Activity size={10} strokeWidth={2.4} className="text-accent-dark" />
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-text-faint">
           Server Load
-          {stalled && (
-            <span
-              className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warning"
-              title="Waiting on SSH — scan is holding the connection"
-            />
-          )}
-        </div>
-        <button
-          onClick={onDismiss}
-          title="Hide"
-          className="flex h-5 w-5 items-center justify-center rounded text-text-faint transition-colors hover:bg-surface-chip hover:text-text-secondary"
-        >
-          <X size={11} strokeWidth={2.2} />
-        </button>
+        </span>
+        {stalled && (
+          <span
+            className="ml-auto inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warning"
+            title="Waiting on SSH — a scan is holding the connection"
+          />
+        )}
       </div>
 
       {/* Body */}
-      <div className="space-y-2.5 px-3 py-2.5">
-        {/* CPU row */}
+      <div className="space-y-2 px-2.5 py-2">
+        {/* CPU */}
         <div>
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-text-tertiary">CPU load</span>
+          <div className="flex items-center justify-between text-[10.5px]">
+            <span className="text-text-tertiary">CPU</span>
             <span className="font-mono font-semibold" style={{ color: loadColor(cpuPct) }}>
-              {latest ? `${latest.loadOneM.toFixed(2)} / ${latest.cpuCores.toString()}` : "—"}
-              <span className="ml-1 text-text-faint">({cpuPct.toFixed(0)}%)</span>
+              {cpuPct.toFixed(0)}%
             </span>
           </div>
-          <div className="mt-1 flex items-end justify-between gap-2">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-chip">
+          <div className="mt-0.5 flex items-end gap-1.5">
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-surface-chip">
               <div
                 className="h-full transition-all"
                 style={{ width: `${cpuPct.toFixed(0)}%`, background: loadColor(cpuPct) }}
               />
             </div>
-            <Sparkline values={cpuSeries} color={loadColor(cpuPct)} width={64} height={16} />
+            <Sparkline values={cpuSeries} color={loadColor(cpuPct)} width={40} height={12} />
+          </div>
+          <div className="mt-0.5 font-mono text-[9.5px] text-text-faint">
+            {latest ? `load ${latest.loadOneM.toFixed(2)} / ${latest.cpuCores.toString()}` : "—"}
           </div>
         </div>
 
-        {/* RAM row */}
+        {/* RAM */}
         <div>
-          <div className="flex items-center justify-between text-[11px]">
+          <div className="flex items-center justify-between text-[10.5px]">
             <span className="text-text-tertiary">RAM</span>
             <span className="font-mono font-semibold text-text-secondary">
-              {latest ? `${fmtGb(latest.memUsedBytes)} / ${fmtGb(latest.memTotalBytes)}` : "—"}
-              <span className="ml-1 text-text-faint">({memPct.toFixed(0)}%)</span>
+              {memPct.toFixed(0)}%
             </span>
           </div>
-          <div className="mt-1 flex items-end justify-between gap-2">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-chip">
+          <div className="mt-0.5 flex items-end gap-1.5">
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-surface-chip">
               <div
                 className="h-full bg-accent transition-all"
                 style={{ width: `${memPct.toFixed(0)}%` }}
               />
             </div>
-            <Sparkline values={memSeries} color="#3f7be0" width={64} height={16} />
+            <Sparkline values={memSeries} color="#3f7be0" width={40} height={12} />
+          </div>
+          <div className="mt-0.5 font-mono text-[9.5px] text-text-faint">
+            {latest ? `${fmtGb(latest.memUsedBytes)} / ${fmtGb(latest.memTotalBytes)}` : "—"}
           </div>
         </div>
-
-        {/* Caption */}
-        <p className="border-t border-border pt-2 text-[10px] leading-relaxed text-text-faint">
-          Scans run with idle CPU + I/O priority (<span className="font-mono">nice</span> +{" "}
-          <span className="font-mono">ionice</span>) so they yield to your active workload.
-        </p>
       </div>
     </div>
   );
