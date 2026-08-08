@@ -1,7 +1,14 @@
-import { ArrowDown, ArrowUp, ExternalLink } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Copy, ExternalLink } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { LargestFile } from "../../api";
 import { formatBytes } from "../../utils/storageHealth";
+
+/** Extract the trailing filename / folder name from a POSIX path. */
+function basename(path: string): string {
+  const trimmed = path.replace(/\/+$/, "");
+  const idx = trimmed.lastIndexOf("/");
+  return idx === -1 ? trimmed : trimmed.slice(idx + 1) || "/";
+}
 
 type SortKey = "path" | "size_bytes" | "modified";
 type SortDir = "asc" | "desc";
@@ -27,6 +34,17 @@ export function LargestItemsTable({
   const [kind, setKind] = useState<Kind>("files");
   const [sortKey, setSortKey] = useState<SortKey>("size_bytes");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  /** Path of the row that was just copied — shows a "Copied ✓ /full/path"
+   *  reveal underneath the filename for a couple of seconds. */
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
+
+  function copyPath(path: string) {
+    void navigator.clipboard.writeText(path);
+    setCopiedPath(path);
+    window.setTimeout(() => {
+      setCopiedPath((cur) => (cur === path ? null : cur));
+    }, 2500);
+  }
 
   const data = kind === "files" ? files : folders;
 
@@ -135,7 +153,7 @@ export function LargestItemsTable({
                     toggleSort("path");
                   }}
                 >
-                  Path <SortIcon col="path" />
+                  Name <SortIcon col="path" />
                 </th>
                 <th
                   className="cursor-pointer px-4 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-widest text-text-faint hover:text-text-primary"
@@ -176,13 +194,43 @@ export function LargestItemsTable({
                     <td className="px-3 py-2 text-center text-[11px] font-medium text-text-faint">
                       {idx + 1}
                     </td>
-                    <td className="max-w-0 px-4 py-2">
-                      <span
-                        className="block truncate font-mono text-[11.5px] text-text-primary"
-                        title={item.path}
-                      >
-                        {item.path}
-                      </span>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="font-mono text-[11.5px] font-medium text-text-primary"
+                          title={item.path}
+                        >
+                          {basename(item.path)}
+                        </span>
+                        <button
+                          onClick={() => {
+                            copyPath(item.path);
+                          }}
+                          className={`flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-medium transition-colors ${
+                            copiedPath === item.path
+                              ? "bg-success/10 text-[#177a4c]"
+                              : "text-text-faint hover:bg-surface-chip hover:text-text-primary"
+                          }`}
+                          title="Copy full path to clipboard"
+                        >
+                          {copiedPath === item.path ? (
+                            <>
+                              <Check size={10} strokeWidth={2.2} />
+                              Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={10} strokeWidth={2} />
+                              Copy path
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      {copiedPath === item.path && (
+                        <div className="mt-1 break-all font-mono text-[10.5px] text-text-tertiary">
+                          {item.path}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums text-text-secondary">
                       {formatBytes(item.size_bytes)}

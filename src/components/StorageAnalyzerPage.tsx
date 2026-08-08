@@ -22,18 +22,16 @@ import { DuplicatesTab } from "./storage/DuplicatesTab";
 import { KpiCard } from "./storage/KpiCard";
 import { LargestItemsTable } from "./storage/LargestItemsTable";
 import { SettingsTab } from "./storage/SettingsTab";
-import { StorageHeatmap } from "./storage/StorageHeatmap";
 import { ServerLoadPopup } from "./storage/ServerLoadPopup";
 import { StorageLogsDrawer } from "./storage/StorageLogsDrawer";
 import { useServerLoad } from "../hooks/useServerLoad";
 import { StorageTree } from "./storage/StorageTree";
 
-type Tab = "dashboard" | "explorer" | "heatmap" | "largest" | "cleanup" | "duplicates" | "settings";
+type Tab = "dashboard" | "explorer" | "largest" | "cleanup" | "duplicates" | "settings";
 
 const NAV_ITEMS: { id: Tab; label: string; icon: React.ReactNode; soon?: boolean }[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={15} /> },
   { id: "explorer", label: "Storage Explorer", icon: <FolderOpen size={15} /> },
-  { id: "heatmap", label: "Storage Heatmap", icon: <Activity size={15} /> },
   { id: "largest", label: "Largest Items", icon: <Database size={15} /> },
   { id: "cleanup", label: "Cleanup Center", icon: <Trash2 size={15} /> },
   { id: "duplicates", label: "Duplicates", icon: <ScrollText size={15} /> },
@@ -274,10 +272,6 @@ export function StorageAnalyzerPage({
               onCollapse={collapseNode}
               onLoadRoot={() => void loadTree("/")}
             />
-          )}
-
-          {activeTab === "heatmap" && (
-            <HeatmapTab state={state} totalBytes={totalBytes} onBrowse={onBrowse} />
           )}
 
           {activeTab === "largest" && (
@@ -646,36 +640,6 @@ function ExplorerTab({ state, totalBytes, onExpand, onCollapse, onLoadRoot }: Ex
           onCollapse={onCollapse}
         />
       </div>
-    </div>
-  );
-}
-
-// ── Heatmap tab ───────────────────────────────────────────────────────────────
-
-interface HeatmapTabProps {
-  state: ReturnType<typeof useStorageAnalyzer>["state"];
-  totalBytes: number;
-  onBrowse?: (path: string) => void;
-}
-
-function HeatmapTab({ state, totalBytes, onBrowse }: HeatmapTabProps) {
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-text-faint">
-          Storage Heatmap — folder sizes as proportional rectangles
-        </h2>
-        {state.lastDeepScan && (
-          <span className="text-[11px] text-text-faint">
-            Data from {new Date(state.lastDeepScan).toLocaleTimeString()}
-          </span>
-        )}
-      </div>
-      <StorageHeatmap
-        folders={state.rootFolders}
-        totalBytes={totalBytes || 1}
-        onBrowse={onBrowse}
-      />
     </div>
   );
 }
