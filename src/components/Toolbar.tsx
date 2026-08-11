@@ -202,7 +202,12 @@ export function Toolbar({
       <div className="flex-1" />
 
       {/* Monitor Tasks dropdown — opens tool pages in separate windows */}
-      <MonitorDropdown host={result.host} username={result.username} osInfo={result.osInfo} />
+      <MonitorDropdown
+        host={result.host}
+        username={result.username}
+        osInfo={result.osInfo}
+        defaultPath={pinnedPath}
+      />
 
       <div className="mx-1 h-4 w-px bg-border" />
 
@@ -286,10 +291,12 @@ function MonitorDropdown({
   host,
   username,
   osInfo,
+  defaultPath,
 }: {
   host: string;
   username: string;
   osInfo: string;
+  defaultPath?: string;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -341,7 +348,7 @@ function MonitorDropdown({
             label="Data Profiler"
             onClick={() => {
               setOpen(false);
-              void openToolWindow("dataProfiler", { host, username, osInfo });
+              void openToolWindow("dataProfiler", { host, username, osInfo, defaultPath });
             }}
           />
         </div>

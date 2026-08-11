@@ -6,6 +6,8 @@ export interface ToolParams {
   host?: string;
   username?: string;
   osInfo?: string; // only used by dataProfiler
+  /** Profile's pinned default folder — prefills the Deep Scan scope modal. */
+  defaultPath?: string;
 }
 
 const TITLES: Record<ToolView, string> = {
@@ -33,6 +35,7 @@ export async function openToolWindow(view: ToolView, params: ToolParams = {}) {
   if (params.host) query.set("host", params.host);
   if (params.username) query.set("username", params.username);
   if (params.osInfo) query.set("osInfo", params.osInfo);
+  if (params.defaultPath) query.set("defaultPath", params.defaultPath);
 
   new WebviewWindow(label, {
     url: `index.html?${query.toString()}`,

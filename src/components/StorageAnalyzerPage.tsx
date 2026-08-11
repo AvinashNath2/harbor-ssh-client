@@ -22,6 +22,7 @@ import { DuplicatesTab } from "./storage/DuplicatesTab";
 import { KpiCard } from "./storage/KpiCard";
 import { LargestItemsTable } from "./storage/LargestItemsTable";
 import { SettingsTab } from "./storage/SettingsTab";
+import { DeepScanScopeModal } from "./storage/DeepScanScopeModal";
 import { ServerLoadPopup } from "./storage/ServerLoadPopup";
 import { StorageLogsDrawer } from "./storage/StorageLogsDrawer";
 import { useServerLoad } from "../hooks/useServerLoad";
@@ -42,6 +43,9 @@ interface StorageAnalyzerPageProps {
   host: string;
   username: string;
   osInfo?: string;
+  /** Profile's pinned defaultPath if any — pre-fills the Deep Scan scope modal
+   *  so the recommended-directory input is the folder the user cares about. */
+  defaultScanPath?: string;
   onClose: () => void;
   onBrowse?: (path: string) => void;
 }
@@ -50,11 +54,13 @@ export function StorageAnalyzerPage({
   host,
   username,
   osInfo,
+  defaultScanPath,
   onClose,
   onBrowse,
 }: StorageAnalyzerPageProps) {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [showLogs, setShowLogs] = useState(false);
+  const [scopeModalOpen, setScopeModalOpen] = useState(false);
   const {
     state,
     fetchOverview,
@@ -143,12 +149,44 @@ export function StorageAnalyzerPage({
           Refresh Overview
         </button>
 
+        {/* Scope-of-last-scan chip — only when a scan has actually completed */}
+        {state.scannedRoot !== null && !state.deepScanning && (
+          <div
+            className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11.5px] font-mono"
+            style={
+              state.scannedRoot === "/"
+                ? {
+                    background: "rgba(31,157,99,0.10)",
+                    borderColor: "rgba(31,157,99,0.30)",
+                    color: "#177a4c",
+                  }
+                : {
+                    background: "rgba(63,123,224,0.08)",
+                    borderColor: "rgba(63,123,224,0.30)",
+                    color: "#2f6bdb",
+                  }
+            }
+            title={
+              state.scannedRoot === "/"
+                ? "The current dashboard reflects a whole-machine scan"
+                : `The current dashboard reflects a scoped scan of ${state.scannedRoot}`
+            }
+          >
+            {state.scannedRoot === "/" ? "🌐 Whole machine" : `🔎 Scan of ${state.scannedRoot}`}
+            {state.lastDeepScan !== null && (
+              <span className="opacity-70">
+                · {new Date(state.lastDeepScan).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+        )}
+
         <button
           onClick={() => {
             if (state.deepScanning) {
               cancelDeepScan();
             } else {
-              void startDeepScan();
+              setScopeModalOpen(true);
             }
           }}
           disabled={!state.deepScanning && state.loading}
@@ -158,7 +196,11 @@ export function StorageAnalyzerPage({
               ? "linear-gradient(135deg,#ef4444,#dc2626)"
               : "linear-gradient(135deg,#3f7be0,#2f6bdb)",
           }}
-          title={state.deepScanning ? "Cancel deep scan" : "Deep scan (du + age histogram)"}
+          title={
+            state.deepScanning
+              ? "Cancel scan — terminates the remote du/find within ~1 s"
+              : "Deep scan: pick a directory or the whole filesystem"
+          }
         >
           {state.deepScanning ? (
             <>
@@ -185,8 +227,10 @@ export function StorageAnalyzerPage({
         <div className="flex flex-shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-5 py-2">
           <Loader2 size={12} className="animate-spin text-amber-500 flex-shrink-0" />
           <span className="text-[11.5px] text-amber-700">
-            <span className="font-semibold">Deep Scan running</span> — SSH channel is occupied.
-            Terminal commands will resume when the scan completes or is cancelled.
+            <span className="font-semibold">Deep Scan running</span> — click Cancel any time to
+            terminate the remote <span className="font-mono">du</span>/
+            <span className="font-mono">find</span> process (takes ~1 s). Server load monitoring
+            stays live throughout.
           </span>
         </div>
       )}
@@ -342,6 +386,19 @@ export function StorageAnalyzerPage({
           }}
         />
       )}
+
+      {scopeModalOpen && (
+        <DeepScanScopeModal
+          defaultPath={defaultScanPath ?? "~"}
+          onCancel={() => {
+            setScopeModalOpen(false);
+          }}
+          onStart={(root) => {
+            setScopeModalOpen(false);
+            void startDeepScan(root);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -406,7 +463,11 @@ function DashboardTab({
               icon={<Activity size={14} />}
             />
             <KpiCard
-              label="Total Files"
+              label={
+                state.scannedRoot !== null && state.scannedRoot !== "/"
+                  ? `Total files in ${state.scannedRoot}`
+                  : "Total Files"
+              }
               value={totalFileCount !== null ? totalFileCount.toLocaleString() : "—"}
               sub={totalFileCount === null ? "Run Deep Scan" : undefined}
               icon={<ScrollText size={14} />}
@@ -418,6 +479,11 @@ function DashboardTab({
       <section>
         <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-text-faint">
           Storage by Age
+          {state.scannedRoot !== null && state.scannedRoot !== "/" && (
+            <span className="ml-2 font-mono normal-case tracking-normal text-text-tertiary">
+              — in {state.scannedRoot}
+            </span>
+          )}
         </h2>
         <div className="rounded-xl border border-border-raised bg-surface-pane p-4">
           {state.ageHistogram ? (
@@ -516,7 +582,21 @@ function DashboardTab({
           Storage by Category
         </h2>
         <div className="rounded-xl border border-border-raised bg-surface-pane p-5">
-          <CategoryDonut categories={state.categories} />
+          {state.scannedRoot !== null && state.scannedRoot !== "/" ? (
+            <div className="text-[12.5px] leading-relaxed text-text-secondary">
+              <p>
+                Category breakdown is only available for whole-machine scans. Run a fresh Deep Scan
+                and pick{" "}
+                <span className="rounded bg-surface-chip px-1 py-0.5 font-mono text-[11px]">
+                  Scan the entire filesystem
+                </span>{" "}
+                to compute it — the current dashboard reflects a scoped scan of{" "}
+                <span className="font-mono text-text-primary">{state.scannedRoot}</span>.
+              </p>
+            </div>
+          ) : (
+            <CategoryDonut categories={state.categories} />
+          )}
         </div>
       </section>
 

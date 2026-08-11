@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   storageAgeHistogram,
+  storageCancelScan,
   storageCategorySizes,
   storageCheckSudo,
   storageCleanupEstimate,
@@ -53,6 +54,13 @@ export interface StorageState {
   ageHistogram: AgeHistogram | null;
   lastRefresh: number | null;
   lastDeepScan: number | null;
+  /** The root the LAST completed deep scan covered. `null` = no scan yet, `"/"`
+   *  = whole-machine scan, `"/var/log"` etc = scoped scan. Drives the "Scan of
+   *  X" chip in the header and the "categories only for full scans" note. */
+  scannedRoot: string | null;
+  /** UUID prefixed into the current in-flight scan's env vars so the control
+   *  channel can pkill it. Cleared when the scan finishes or is cancelled. */
+  scanCancelTag: string | null;
   logs: StorageLogEntry[];
   // Phase 2
   treeRoot: TreeNode | null;
@@ -72,6 +80,14 @@ export interface StorageState {
 let _logId = 0;
 let _fetchCycle = 0;
 const MAX_LOGS = 500;
+
+/** UUID used as the HARBOR_CANCEL_TAG env var on remote scan commands, so the
+ *  control channel can `pkill -f` this exact process tree. */
+function generateCancelTag(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 async function safe<T>(_label: string, fn: () => Promise<T>): Promise<T | null> {
   try {
@@ -96,6 +112,8 @@ export function useStorageAnalyzer() {
     ageHistogram: null,
     lastRefresh: null,
     lastDeepScan: null,
+    scannedRoot: null,
+    scanCancelTag: null,
     logs: [],
     treeRoot: null,
     treeLoading: false,
@@ -111,6 +129,13 @@ export function useStorageAnalyzer() {
 
   const mountedRef = useRef(true);
   const deepScanAbortRef = useRef(false);
+  /** Ref mirror of `state.scanCancelTag` so `cancelDeepScan` (a stable
+   *  useCallback with no state deps) can read the current tag without
+   *  triggering closures over state. Synced via useEffect below. */
+  const currentCancelTagRef = useRef<string | null>(null);
+  useEffect(() => {
+    currentCancelTagRef.current = state.scanCancelTag;
+  }, [state.scanCancelTag]);
 
   const appendLog = useCallback(
     (
@@ -183,137 +208,223 @@ export function useStorageAnalyzer() {
     flushLogs(logs);
   }, [appendLog, flushLogs]);
 
-  const startDeepScan = useCallback(async () => {
-    if (!mountedRef.current) return;
-    deepScanAbortRef.current = false;
-    const cycle = ++_fetchCycle;
+  /**
+   * Run the deep-scan pipeline against `root` (defaults to "/" = whole machine).
+   *
+   * Pipeline (all sequential — single SSH channel):
+   *   1. `du -d 1 <root>`   → state.rootFolders
+   *   2. `find <root> ...`  → state.ageHistogram
+   *   3. If root === "/":  `du -s` on well-known category paths → state.categories
+   *      Otherwise skip — the category list is a hardcoded set of full-filesystem
+   *      well-known paths (/var/log, /home, /var/lib/docker, …) and is not
+   *      meaningful for a scoped scan.
+   *
+   * Every scan generates a UUID cancel-tag that is baked into the remote
+   * command's env-var prefix. `cancelDeepScan()` uses the tag to `pkill` the
+   * running process via the SECONDARY SSH channel, so cancel is instant even
+   * mid-`du`. Falls back to abort-between-steps if the control channel isn't
+   * available.
+   */
+  const startDeepScan = useCallback(
+    async (root = "/") => {
+      if (!mountedRef.current) return;
+      deepScanAbortRef.current = false;
+      const cancelTag = generateCancelTag();
+      // Set the ref synchronously (state update happens on next render, but the
+      // scan pipeline starts immediately after this call — the user could
+      // click Cancel before the state effect fires).
+      currentCancelTagRef.current = cancelTag;
+      const cycle = ++_fetchCycle;
+      const isWholeMachine = root === "/";
 
-    setState((s) => ({ ...s, deepScanning: true, error: null }));
-    const l0: StorageLogEntry[] = [];
-    appendLog(
-      { level: "info", source: "deep-scan", message: "Starting: du -x -B1 -d 1 /…" },
-      cycle,
-      l0,
-    );
-    flushLogs(l0);
+      setState((s) => ({
+        ...s,
+        deepScanning: true,
+        error: null,
+        scanCancelTag: cancelTag,
+        // Clear stale data so the UI shows loading state cleanly.
+        rootFolders: [],
+        ageHistogram: null,
+        // Categories only make sense for whole-machine scans; wipe when scoped.
+        categories: isWholeMachine ? s.categories : [],
+        categoryRawSizes: isWholeMachine ? s.categoryRawSizes : [],
+      }));
 
-    const t0 = Date.now();
-    const rootFolders = await safe("storage_scan_root", () => storageScanRoot(1));
-    const dt1 = Date.now() - t0;
-
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (!mountedRef.current || deepScanAbortRef.current) {
-      setState((s) => ({ ...s, deepScanning: false }));
-      return;
-    }
-
-    const l1: StorageLogEntry[] = [];
-    if (rootFolders) {
+      const l0: StorageLogEntry[] = [];
       appendLog(
         {
           level: "info",
           source: "deep-scan",
-          message: `du complete — ${String(rootFolders.length)} entries in ${String(dt1)}ms`,
+          message: `Starting deep scan of ${root} (cancel tag ${cancelTag.slice(0, 8)}…)`,
         },
         cycle,
-        l1,
+        l0,
       );
-      setState((s) => ({ ...s, rootFolders }));
-    } else {
-      appendLog({ level: "warn", source: "deep-scan", message: "du returned no data" }, cycle, l1);
-    }
-    flushLogs(l1);
+      flushLogs(l0);
 
-    const l2: StorageLogEntry[] = [];
-    appendLog(
-      { level: "info", source: "age-histogram", message: "Running find / -printf mtime…" },
-      cycle,
-      l2,
-    );
-    flushLogs(l2);
+      // ── Step 1: folder sizes ────────────────────────────────────────────────
+      const t0 = Date.now();
+      const rootFolders = await safe("storage_scan_root", () =>
+        storageScanRoot(root, 1, cancelTag),
+      );
+      const dt1 = Date.now() - t0;
 
-    const t2 = Date.now();
-    const ageHistogram = await safe("storage_age_histogram", () => storageAgeHistogram("/"));
-    const dt2 = Date.now() - t2;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (!mountedRef.current || deepScanAbortRef.current) {
+        setState((s) => ({ ...s, deepScanning: false, scanCancelTag: null }));
+        return;
+      }
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (!mountedRef.current || deepScanAbortRef.current) {
-      setState((s) => ({ ...s, deepScanning: false }));
-      return;
-    }
+      const l1: StorageLogEntry[] = [];
+      if (rootFolders) {
+        appendLog(
+          {
+            level: "info",
+            source: "deep-scan",
+            message: `du ${root} complete — ${String(rootFolders.length)} entries in ${String(dt1)}ms`,
+          },
+          cycle,
+          l1,
+        );
+        setState((s) => ({ ...s, rootFolders }));
+      } else {
+        appendLog(
+          { level: "warn", source: "deep-scan", message: "du returned no data" },
+          cycle,
+          l1,
+        );
+      }
+      flushLogs(l1);
 
-    const l3: StorageLogEntry[] = [];
-    if (ageHistogram) {
+      // ── Step 2: age histogram ───────────────────────────────────────────────
+      const l2: StorageLogEntry[] = [];
       appendLog(
         {
           level: "info",
           source: "age-histogram",
-          message: `Done — ${ageHistogram.total_files.toLocaleString()} files in ${String(dt2)}ms`,
+          message: `Running find ${root} -printf mtime…`,
         },
         cycle,
-        l3,
+        l2,
       );
-    } else {
-      appendLog({ level: "warn", source: "age-histogram", message: "histogram failed" }, cycle, l3);
-    }
+      flushLogs(l2);
 
-    setState((s) => ({
-      ...s,
-      ageHistogram: ageHistogram ?? s.ageHistogram,
-    }));
-    flushLogs(l3);
+      const t2 = Date.now();
+      const ageHistogram = await safe("storage_age_histogram", () =>
+        storageAgeHistogram(root, cancelTag),
+      );
+      const dt2 = Date.now() - t2;
 
-    // ── Phase 3: category sizes ───────────────────────────────────────────────
-    const l4: StorageLogEntry[] = [];
-    appendLog(
-      { level: "info", source: "categorize", message: "Fetching targeted category sizes…" },
-      cycle,
-      l4,
-    );
-    flushLogs(l4);
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (!mountedRef.current || deepScanAbortRef.current) {
+        setState((s) => ({ ...s, deepScanning: false, scanCancelTag: null }));
+        return;
+      }
 
-    const t4 = Date.now();
-    const catSizes = await safe("storage_category_sizes", storageCategorySizes);
-    const dt4 = Date.now() - t4;
+      const l3: StorageLogEntry[] = [];
+      if (ageHistogram) {
+        appendLog(
+          {
+            level: "info",
+            source: "age-histogram",
+            message: `Done — ${ageHistogram.total_files.toLocaleString()} files in ${String(dt2)}ms`,
+          },
+          cycle,
+          l3,
+        );
+      } else {
+        appendLog(
+          { level: "warn", source: "age-histogram", message: "histogram failed" },
+          cycle,
+          l3,
+        );
+      }
+      setState((s) => ({ ...s, ageHistogram: ageHistogram ?? s.ageHistogram }));
+      flushLogs(l3);
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (!mountedRef.current || deepScanAbortRef.current) {
-      setState((s) => ({ ...s, deepScanning: false }));
-      return;
-    }
+      // ── Step 3: category sizes (whole-machine scans only) ──────────────────
+      if (!isWholeMachine) {
+        setState((s) => ({
+          ...s,
+          deepScanning: false,
+          lastDeepScan: Date.now(),
+          scannedRoot: root,
+          scanCancelTag: null,
+        }));
+        return;
+      }
 
-    const l5: StorageLogEntry[] = [];
-    if (catSizes) {
-      const categories = computeCategories(catSizes);
+      const l4: StorageLogEntry[] = [];
       appendLog(
-        {
-          level: "info",
-          source: "categorize",
-          message: `${String(categories.length)} categories from ${String(catSizes.length)} paths — ${String(dt4)}ms`,
-        },
+        { level: "info", source: "categorize", message: "Fetching targeted category sizes…" },
         cycle,
-        l5,
+        l4,
       );
-      setState((s) => ({
-        ...s,
-        deepScanning: false,
-        lastDeepScan: Date.now(),
-        categories,
-        categoryRawSizes: catSizes,
-      }));
-    } else {
-      appendLog(
-        { level: "warn", source: "categorize", message: "category sizes failed" },
-        cycle,
-        l5,
-      );
-      setState((s) => ({ ...s, deepScanning: false, lastDeepScan: Date.now() }));
-    }
-    flushLogs(l5);
-  }, [appendLog, flushLogs]);
+      flushLogs(l4);
+
+      const t4 = Date.now();
+      const catSizes = await safe("storage_category_sizes", storageCategorySizes);
+      const dt4 = Date.now() - t4;
+
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (!mountedRef.current || deepScanAbortRef.current) {
+        setState((s) => ({ ...s, deepScanning: false, scanCancelTag: null }));
+        return;
+      }
+
+      const l5: StorageLogEntry[] = [];
+      if (catSizes) {
+        const categories = computeCategories(catSizes);
+        appendLog(
+          {
+            level: "info",
+            source: "categorize",
+            message: `${String(categories.length)} categories from ${String(catSizes.length)} paths — ${String(dt4)}ms`,
+          },
+          cycle,
+          l5,
+        );
+        setState((s) => ({
+          ...s,
+          deepScanning: false,
+          lastDeepScan: Date.now(),
+          scannedRoot: root,
+          scanCancelTag: null,
+          categories,
+          categoryRawSizes: catSizes,
+        }));
+      } else {
+        appendLog(
+          { level: "warn", source: "categorize", message: "category sizes failed" },
+          cycle,
+          l5,
+        );
+        setState((s) => ({
+          ...s,
+          deepScanning: false,
+          lastDeepScan: Date.now(),
+          scannedRoot: root,
+          scanCancelTag: null,
+        }));
+      }
+      flushLogs(l5);
+    },
+    [appendLog, flushLogs],
+  );
 
   const cancelDeepScan = useCallback(() => {
+    // Flip the local abort ref immediately — the between-step guards will
+    // exit the pipeline as soon as they check.
     deepScanAbortRef.current = true;
+    // Fire the remote pkill via the CONTROL SSH channel so the running
+    // du/find dies within ~1 s. Fire-and-forget; if there's no tag (no
+    // active scan) or the control channel isn't available, this is a
+    // no-op and we fall back to between-step abort.
+    const tag = currentCancelTagRef.current;
+    currentCancelTagRef.current = null;
+    if (tag) {
+      void storageCancelScan(tag).catch(() => undefined);
+    }
   }, []);
 
   // ── Phase 2: tree ────────────────────────────────────────────────────────────

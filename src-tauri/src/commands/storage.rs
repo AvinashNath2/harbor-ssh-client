@@ -15,21 +15,40 @@ use crate::ssh::SshState;
 ///   nothing else needs the disk. Prevents `du`/`find` from hurting production I/O.
 /// - `timeout <N>`: guarantees the remote `find`/`du` process is killed even if the
 ///   SSH channel closes unexpectedly, preventing orphaned heavy processes on prod.
+/// - `HARBOR_CANCEL_TAG=<uuid>` when a tag is supplied: shows up in `ps aux` as
+///   part of the child process's command line, so the control channel can
+///   `pkill -f 'HARBOR_CANCEL_TAG=<uuid>'` to terminate this exact scan without
+///   affecting anything else on the server.
 /// - Running inside `sh -c` lets the pipe (`find … | head`) be managed by a single
 ///   shell process group, so SIGTERM from `timeout` propagates to all children.
 ///
 /// Single quotes inside `cmd` are automatically escaped.
-fn throttle(cmd: &str, timeout_secs: u32, has_ionice: bool) -> String {
+fn throttle(cmd: &str, timeout_secs: u32, has_ionice: bool, cancel_tag: Option<&str>) -> String {
     let escaped = cmd.replace('\'', "'\\''");
     let io_wrap = if has_ionice { "ionice -c 3 " } else { "" };
-    format!("timeout {timeout_secs} nice -n 19 {io_wrap}sh -c '{escaped}'")
+    let tag_prefix = match cancel_tag {
+        Some(t) if !t.is_empty() => format!("HARBOR_CANCEL_TAG={t} "),
+        _ => String::new(),
+    };
+    format!("{tag_prefix}timeout {timeout_secs} nice -n 19 {io_wrap}sh -c '{escaped}'")
 }
 
 /// Convenience wrapper: probes `ionice` availability (cached per session) and
 /// builds a throttled command in one call. Use this instead of raw `throttle()`
 /// so every storage scan automatically picks up idle I/O priority when available.
 fn throttled_cmd(bundle: &mut crate::ssh::SessionBundle, cmd: &str, timeout_secs: u32) -> String {
-    throttle(cmd, timeout_secs, bundle.has_ionice())
+    throttle(cmd, timeout_secs, bundle.has_ionice(), None)
+}
+
+/// Same as `throttled_cmd` but tags the process so the control channel can
+/// terminate it out-of-band via `pkill`.
+fn throttled_tagged_cmd(
+    bundle: &mut crate::ssh::SessionBundle,
+    cmd: &str,
+    timeout_secs: u32,
+    cancel_tag: &str,
+) -> String {
+    throttle(cmd, timeout_secs, bundle.has_ionice(), Some(cancel_tag))
 }
 
 #[derive(Debug, Serialize)]
@@ -191,7 +210,9 @@ pub async fn storage_system_info(
 
 #[tauri::command]
 pub async fn storage_scan_root(
+    root: Option<String>,
     depth: Option<u8>,
+    cancel_tag: Option<String>,
     state: tauri::State<'_, SshState>,
 ) -> Result<Vec<FolderSize>, AppError> {
     let ssh = Arc::clone(&state.inner);
@@ -202,7 +223,12 @@ pub async fn storage_scan_root(
         let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
 
         let d = depth.unwrap_or(1);
-        let cmd = throttled_cmd(bundle, &format!("du -x -B1 -d {d} / 2>/dev/null"), 180);
+        let target = root.unwrap_or_else(|| "/".to_string());
+        let inner = format!("du -x -B1 -d {d} -- {target} 2>/dev/null");
+        let cmd = match cancel_tag.as_deref() {
+            Some(tag) if !tag.is_empty() => throttled_tagged_cmd(bundle, &inner, 180, tag),
+            _ => throttled_cmd(bundle, &inner, 180),
+        };
         let output = bundle.exec(&cmd)?;
 
         let mut folders: Vec<FolderSize> = output
@@ -226,9 +252,47 @@ pub async fn storage_scan_root(
     .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
 }
 
+/// Terminate any in-flight scan tagged with `cancel_tag` on the remote server.
+/// Sends SIGTERM immediately, waits 2 s for graceful shutdown, then SIGKILL for
+/// any straggler.
+///
+/// Runs on the secondary control SSH channel so it works even while the primary
+/// channel is blocked reading output from the very scan we're trying to kill.
+#[tauri::command]
+pub async fn storage_cancel_scan(
+    cancel_tag: String,
+    state: tauri::State<'_, SshState>,
+) -> Result<(), AppError> {
+    if cancel_tag.is_empty() {
+        return Ok(());
+    }
+    let ssh = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let guard = ssh
+            .lock()
+            .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
+        let bundle = guard.as_ref().ok_or_else(AppError::not_connected)?;
+
+        let escaped = cancel_tag.replace('\'', "'\\''");
+        let cmd = format!(
+            "pkill -TERM -f 'HARBOR_CANCEL_TAG={escaped}' 2>/dev/null; \
+             sleep 2; \
+             pkill -KILL -f 'HARBOR_CANCEL_TAG={escaped}' 2>/dev/null; \
+             true"
+        );
+        // Fire-and-forget on the CONTROL channel. Errors here mean the scan
+        // already exited (nothing to kill) — that's fine, treat as success.
+        let _ = bundle.exec_control(&cmd);
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("Task join error: {e}")))?
+}
+
 #[tauri::command]
 pub async fn storage_age_histogram(
     path: String,
+    cancel_tag: Option<String>,
     state: tauri::State<'_, SshState>,
 ) -> Result<AgeHistogram, AppError> {
     let ssh = Arc::clone(&state.inner);
@@ -242,7 +306,10 @@ pub async fn storage_age_histogram(
         // SIGPIPE to find faster than a line count does.
         let inner =
             format!("find {path} -xdev -type f -printf '%T@ %s\\n' 2>/dev/null | head -c 4194304");
-        let cmd = throttled_cmd(bundle, &inner, 120);
+        let cmd = match cancel_tag.as_deref() {
+            Some(tag) if !tag.is_empty() => throttled_tagged_cmd(bundle, &inner, 120, tag),
+            _ => throttled_cmd(bundle, &inner, 120),
+        };
         let output = bundle.exec(&cmd)?;
 
         let now = std::time::SystemTime::now()
@@ -452,8 +519,10 @@ fn check_avail(bundle: &crate::ssh::SessionBundle, check: &str) -> bool {
         "{{ {}; }} >/dev/null 2>&1 && echo __YES__ || echo __NO__",
         check
     );
+    // Availability probes are short and idempotent; run on the control channel
+    // so they don't queue behind a scan.
     bundle
-        .exec(&cmd)
+        .exec_control(&cmd)
         .map(|out| out.contains("__YES__"))
         .unwrap_or(false)
 }
@@ -467,7 +536,10 @@ pub async fn storage_check_sudo(state: tauri::State<'_, SshState>) -> Result<boo
             .lock()
             .map_err(|_| AppError::internal("SSH state mutex poisoned"))?;
         let bundle = guard.as_mut().ok_or_else(AppError::not_connected)?;
-        let out = bundle.exec("sudo -n true >/dev/null 2>&1 && echo __YES__ || echo __NO__")?;
+        // Uses the control channel so the sudo probe doesn't queue behind an
+        // active deep scan.
+        let out =
+            bundle.exec_control("sudo -n true >/dev/null 2>&1 && echo __YES__ || echo __NO__")?;
         Ok(out.contains("__YES__"))
     })
     .await
@@ -584,8 +656,10 @@ pub async fn storage_cleanup_estimate(
         let available = check_avail(bundle, query.avail_check);
 
         let estimated_bytes = if available {
+            // Estimate queries are short (du -s / docker system df etc). Use the
+            // control channel so they don't queue behind a running deep scan.
             bundle
-                .exec(query.size_query)
+                .exec_control(query.size_query)
                 .ok()
                 .and_then(|out| out.trim().parse::<u64>().ok())
                 .unwrap_or(0)
@@ -751,7 +825,7 @@ pub async fn storage_cleanup_preview(
         {
             "journal-vacuum" => {
                 let desc = "Trims systemd's binary journal down to 100 MB by deleting the oldest archived journal files. Active journals (currently being written) are never touched, so no live logs are lost.".to_string();
-                let out = bundle.exec(
+                let out = bundle.exec_control(
                     "find /var/log/journal /run/log/journal -type f \\
                         \\( -name '*.journal~' -o -name 'system@*.journal' -o -name 'user-*@*.journal' \\) \
                         -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500",
@@ -767,7 +841,7 @@ pub async fn storage_cleanup_preview(
             }
             "apt-cache" => {
                 let desc = "Removes every downloaded .deb package cached in /var/cache/apt/archives. APT re-downloads what it needs next time you install something.".to_string();
-                let out = bundle.exec(
+                let out = bundle.exec_control(
                     "find /var/cache/apt/archives -maxdepth 1 -type f -name '*.deb' \
                         -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500",
                 ).unwrap_or_default();
@@ -779,7 +853,7 @@ pub async fn storage_cleanup_preview(
                 let desc = format!(
                     "Deletes all cached package metadata and downloaded RPMs under {root}. The package manager rebuilds its cache on next use."
                 );
-                let out = bundle.exec(&format!(
+                let out = bundle.exec_control(&format!(
                     "find {root} -type f -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500"
                 )).unwrap_or_default();
                 let items = parse_size_path_lines(&out);
@@ -791,7 +865,7 @@ pub async fn storage_cleanup_preview(
                 let mut notes = Vec::new();
 
                 // Stopped containers
-                let containers = bundle.exec(
+                let containers = bundle.exec_control(
                     "docker ps -a --filter status=exited --filter status=created --filter status=dead \
                         --format '{{.ID}}\\t{{.Names}}\\t{{.Image}}\\t{{.Status}}\\t{{.Size}}' 2>/dev/null"
                 ).unwrap_or_default();
@@ -810,10 +884,10 @@ pub async fn storage_cleanup_preview(
                 }
 
                 // Dangling + unreferenced images
-                let images = bundle.exec(
+                let images = bundle.exec_control(
                     "docker images -a --format '{{.ID}}\\t{{.Repository}}:{{.Tag}}\\t{{.Size}}' 2>/dev/null"
                 ).unwrap_or_default();
-                let used = bundle.exec(
+                let used = bundle.exec_control(
                     "docker ps -a --format '{{.Image}}' 2>/dev/null | sort -u"
                 ).unwrap_or_default();
                 let used_set: std::collections::HashSet<String> = used.lines().map(|s| s.trim().to_string()).collect();
@@ -833,7 +907,7 @@ pub async fn storage_cleanup_preview(
                 }
 
                 // Unused networks (skip default bridge/host/none)
-                let networks = bundle.exec(
+                let networks = bundle.exec_control(
                     "docker network ls --format '{{.ID}}\\t{{.Name}}\\t{{.Driver}}' 2>/dev/null"
                 ).unwrap_or_default();
                 for line in networks.lines() {
@@ -850,7 +924,7 @@ pub async fn storage_cleanup_preview(
                 }
 
                 // Build cache summary (single line, docker doesn't expose per-item easily)
-                if let Ok(bc) = bundle.exec("docker builder du 2>/dev/null | tail -1") {
+                if let Ok(bc) = bundle.exec_control("docker builder du 2>/dev/null | tail -1") {
                     let bc = bc.trim();
                     if !bc.is_empty() {
                         notes.push(format!("Build cache: {bc}"));
@@ -866,7 +940,7 @@ pub async fn storage_cleanup_preview(
                     "⚠ Volumes contain persistent data (databases, uploaded files, config). Once deleted, they are gone. Verify each entry.".to_string(),
                 ];
 
-                let volumes = bundle.exec(
+                let volumes = bundle.exec_control(
                     "docker volume ls -f dangling=true --format '{{.Name}}\\t{{.Driver}}' 2>/dev/null"
                 ).unwrap_or_default();
                 for line in volumes.lines() {
@@ -876,7 +950,7 @@ pub async fn storage_cleanup_preview(
                     if name.is_empty() { continue; }
                     let driver = cols.get(1).unwrap_or(&"local");
                     // Try to get size — /var/lib/docker/volumes/<name>/_data
-                    let size = bundle.exec(&format!(
+                    let size = bundle.exec_control(&format!(
                         "du -sb /var/lib/docker/volumes/{name}/_data 2>/dev/null | awk '{{print $1+0}}'"
                     )).ok().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
                     items.push(CleanupItem {
@@ -894,7 +968,7 @@ pub async fn storage_cleanup_preview(
             }
             "tmp-old" => {
                 let desc = "Deletes files in /tmp that haven't been accessed in the last 90 days (atime > 90). Recent tmp files, sockets, and active session data are untouched.".to_string();
-                let out = bundle.exec(
+                let out = bundle.exec_control(
                     "find /tmp -maxdepth 3 -type f -atime +90 -printf '%s\\t%p\\n' 2>/dev/null \
                         | sort -rn | head -500",
                 ).unwrap_or_default();
@@ -903,7 +977,7 @@ pub async fn storage_cleanup_preview(
             }
             "coredumps" => {
                 let desc = "Removes crash dump files matching core.*, *.crash, and *.core under /var/crash, /var/core, and /tmp. These are diagnostic artefacts left behind by crashed processes.".to_string();
-                let out = bundle.exec(
+                let out = bundle.exec_control(
                     "find /var/crash /var/core /tmp -maxdepth 3 -type f \
                         \\( -name 'core.*' -o -name '*.crash' -o -name '*.core' \\) \
                         -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500",
@@ -913,7 +987,7 @@ pub async fn storage_cleanup_preview(
             }
             "old-logs" => {
                 let desc = "Removes rotated log files under /var/log (compressed .gz, and numbered rollovers like syslog.1, auth.log.4.gz). Active log files being written to right now are untouched.".to_string();
-                let out = bundle.exec(
+                let out = bundle.exec_control(
                     "find /var/log -type f \\( -name '*.gz' -o -name '*.[0-9]' -o -name '*.[0-9][0-9]' \\) \
                         -printf '%s\\t%p\\n' 2>/dev/null | sort -rn | head -500",
                 ).unwrap_or_default();
@@ -928,7 +1002,7 @@ pub async fn storage_cleanup_preview(
         // and their per-item sizes may under-report (esp. docker), which is why we
         // don't just sum them.
         let total_bytes: u64 = preset_reclaim_query(&target)
-            .and_then(|q| bundle.exec(q.size_query).ok())
+            .and_then(|q| bundle.exec_control(q.size_query).ok())
             .and_then(|s| s.trim().parse::<u64>().ok())
             .unwrap_or(0);
         let item_count = items.len();
@@ -1138,7 +1212,9 @@ pub async fn storage_system_load(
 
         // Batch three trivial reads into one round-trip. Section headers let us
         // find each block regardless of ordering / warnings on stderr.
-        let out = bundle.exec(
+        // Uses the control channel so live load polls stay flowing every 5 s
+        // even while a deep scan is holding the primary channel.
+        let out = bundle.exec_control(
             "printf 'LOAD:'; cat /proc/loadavg 2>/dev/null; \
              printf '\\nMEM:'; free -b 2>/dev/null | awk 'NR==2{print $3, $2}'; \
              printf '\\nCORES:'; nproc 2>/dev/null || echo 1",

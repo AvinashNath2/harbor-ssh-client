@@ -28,13 +28,20 @@ function renderRoot() {
   const host = params.get("host") ?? "";
   const username = params.get("username") ?? "";
   const osInfo = params.get("osInfo") ?? undefined;
+  const defaultPath = params.get("defaultPath") ?? undefined;
 
   switch (view) {
     case "javaMonitor":
       return <ProcessMonitorPage host={host} username={username} onClose={closeSelf} />;
     case "dataProfiler":
       return (
-        <StorageAnalyzerPage host={host} username={username} osInfo={osInfo} onClose={closeSelf} />
+        <StorageAnalyzerPage
+          host={host}
+          username={username}
+          osInfo={osInfo}
+          defaultScanPath={defaultPath}
+          onClose={closeSelf}
+        />
       );
     case "sessionLog":
       return <SessionLogPage onClose={closeSelf} />;

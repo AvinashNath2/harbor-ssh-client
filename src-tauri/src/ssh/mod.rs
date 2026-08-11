@@ -39,18 +39,109 @@ pub struct PortForwardHandle {
 // ── Session bundle ────────────────────────────────────────────────────────────
 
 pub struct SessionBundle {
+    /// Primary/work session — holds SFTP, runs scans/cleanup/terminal, everything
+    /// that can be long-running or stateful.
     pub session: Session,
+    /// Optional secondary session dedicated to short control commands (cancel
+    /// via `pkill`, live monitoring polls, cleanup estimates). Idle 99% of the
+    /// time. Runs completely independently of the primary channel, so a
+    /// blocking `du /` on the primary never queues control traffic behind it.
+    /// `None` when the secondary auth failed at connect time — callers must
+    /// fall back to the primary session.
+    control_session: Option<Session>,
     host: String,
     #[allow(dead_code)]
     port: u16,
     username: String,
     pub ip_addr: String,
     _stream: TcpStream,
+    /// Keep the secondary TCP stream alive for the lifetime of the bundle.
+    _control_stream: Option<TcpStream>,
     /// Cached SFTP handle — avoids re-initializing the SFTP subsystem on every call.
     sftp: Option<ssh2::Sftp>,
     /// Cached `command -v ionice` result — probed lazily on first storage scan,
     /// then reused for every throttled command in this session.
     ionice_available: Option<bool>,
+}
+
+/// Result of a single authenticated session open. Owned pieces so the caller
+/// can bundle multiple of these together.
+struct AuthedSession {
+    session: Session,
+    stream_clone: TcpStream,
+}
+
+/// Open a TCP connection + SSH handshake + authenticate. Extracted so both the
+/// primary and the control session share the exact same setup (including
+/// keepalive and read-timeout behavior).
+fn open_authenticated_session(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+) -> Result<AuthedSession, AppError> {
+    let addr = format!("{host}:{port}");
+    let stream = TcpStream::connect(&addr).or_else(|_| {
+        use std::net::ToSocketAddrs;
+        let socket = addr
+            .to_socket_addrs()
+            .map_err(|e| AppError::connection_failed(format!("DNS lookup failed: {e}")))?
+            .next()
+            .ok_or_else(|| AppError::connection_failed("No addresses returned by DNS"))?;
+        TcpStream::connect_timeout(&socket, Duration::from_secs(SSH_CONNECT_TIMEOUT_SECS))
+            .map_err(|e| AppError::connection_failed(format!("TCP connect failed: {e}")))
+    })?;
+
+    stream
+        .set_read_timeout(Some(Duration::from_secs(SSH_READ_TIMEOUT_SECS)))
+        .map_err(|e| AppError::internal(e.to_string()))?;
+
+    let mut session =
+        Session::new().map_err(|e| AppError::internal(format!("ssh2 init failed: {e}")))?;
+
+    let stream_clone = stream
+        .try_clone()
+        .map_err(|e| AppError::internal(format!("stream clone failed: {e}")))?;
+
+    session.set_tcp_stream(stream);
+    session
+        .handshake()
+        .map_err(|e| AppError::connection_failed(format!("SSH handshake failed: {e}")))?;
+
+    match auth {
+        AuthMethod::Password { password } => {
+            session
+                .userauth_password(username, password)
+                .map_err(|e| AppError::auth_failed(format!("Password auth failed: {e}")))?;
+        }
+        AuthMethod::PublicKey {
+            key_path,
+            passphrase,
+        } => {
+            let expanded = shellexpand::tilde(key_path).into_owned();
+            let key_file = Path::new(&expanded);
+            session
+                .userauth_pubkey_file(username, None, key_file, passphrase.as_deref())
+                .map_err(|e| AppError::auth_failed(format!("Key auth failed: {e}")))?;
+        }
+    }
+
+    if !session.authenticated() {
+        return Err(AppError::auth_failed("Authentication rejected by server"));
+    }
+
+    // SSH-level keepalive: send an SSH ignore message every 30 seconds,
+    // and expect the server to reply. If the pipe is dead (laptop slept,
+    // network dropped, etc.), the next keepalive attempt fails and any
+    // subsequent read/write on this session will error out instead of
+    // hanging indefinitely. The `true` argument makes the server also
+    // send replies, so we can detect one-way drops.
+    session.set_keepalive(true, SSH_KEEPALIVE_INTERVAL_SECS);
+
+    Ok(AuthedSession {
+        session,
+        stream_clone,
+    })
 }
 
 impl SessionBundle {
@@ -60,76 +151,41 @@ impl SessionBundle {
         username: &str,
         auth: &AuthMethod,
     ) -> Result<Self, AppError> {
-        let addr = format!("{host}:{port}");
-        let stream = TcpStream::connect(&addr).or_else(|_| {
-            use std::net::ToSocketAddrs;
-            let socket = addr
-                .to_socket_addrs()
-                .map_err(|e| AppError::connection_failed(format!("DNS lookup failed: {e}")))?
-                .next()
-                .ok_or_else(|| AppError::connection_failed("No addresses returned by DNS"))?;
-            TcpStream::connect_timeout(&socket, Duration::from_secs(SSH_CONNECT_TIMEOUT_SECS))
-                .map_err(|e| AppError::connection_failed(format!("TCP connect failed: {e}")))
-        })?;
+        // Primary session — always required.
+        let primary = open_authenticated_session(host, port, username, auth)?;
 
-        let ip_addr = stream
+        let ip_addr = primary
+            .stream_clone
             .peer_addr()
             .map(|a| a.ip().to_string())
             .unwrap_or_else(|_| host.to_owned());
 
-        stream
-            .set_read_timeout(Some(Duration::from_secs(SSH_READ_TIMEOUT_SECS)))
-            .map_err(|e| AppError::internal(e.to_string()))?;
-
-        let mut session =
-            Session::new().map_err(|e| AppError::internal(format!("ssh2 init failed: {e}")))?;
-
-        let stream_clone = stream
-            .try_clone()
-            .map_err(|e| AppError::internal(format!("stream clone failed: {e}")))?;
-
-        session.set_tcp_stream(stream);
-        session
-            .handshake()
-            .map_err(|e| AppError::connection_failed(format!("SSH handshake failed: {e}")))?;
-
-        match auth {
-            AuthMethod::Password { password } => {
-                session
-                    .userauth_password(username, password)
-                    .map_err(|e| AppError::auth_failed(format!("Password auth failed: {e}")))?;
-            }
-            AuthMethod::PublicKey {
-                key_path,
-                passphrase,
-            } => {
-                let expanded = shellexpand::tilde(key_path).into_owned();
-                let key_file = Path::new(&expanded);
-                session
-                    .userauth_pubkey_file(username, None, key_file, passphrase.as_deref())
-                    .map_err(|e| AppError::auth_failed(format!("Key auth failed: {e}")))?;
-            }
-        }
-
-        if !session.authenticated() {
-            return Err(AppError::auth_failed("Authentication rejected by server"));
-        }
-
-        // SSH-level keepalive: send an SSH ignore message every 30 seconds,
-        // and expect the server to reply. If the pipe is dead (laptop slept,
-        // network dropped, etc.), the next keepalive attempt fails and any
-        // subsequent read/write on this session will error out instead of
-        // hanging indefinitely. The `true` argument makes the server also
-        // send replies, so we can detect one-way drops.
-        session.set_keepalive(true, SSH_KEEPALIVE_INTERVAL_SECS);
+        // Secondary control session — best-effort. Used for out-of-band cancel
+        // signals and short monitoring polls that shouldn't queue behind a
+        // long-running scan on the primary channel. If it fails to auth (e.g.
+        // MaxSessions=1 configured on the server), we fall back to the primary
+        // for everything.
+        let (control_session, _control_stream) =
+            match open_authenticated_session(host, port, username, auth) {
+                Ok(sec) => (Some(sec.session), Some(sec.stream_clone)),
+                Err(e) => {
+                    eprintln!(
+                        "[harbor] secondary SSH control session failed ({e:?}); \
+                         cancel + live monitoring will use primary channel"
+                    );
+                    (None, None)
+                }
+            };
 
         Ok(SessionBundle {
-            session,
+            session: primary.session,
+            control_session,
             host: host.to_owned(),
             port,
             username: username.to_owned(),
             ip_addr,
-            _stream: stream_clone,
+            _stream: primary.stream_clone,
+            _control_stream,
             sftp: None,
             ionice_available: None,
         })
@@ -168,25 +224,19 @@ impl SessionBundle {
     }
 
     pub fn exec(&self, command: &str) -> Result<String, AppError> {
-        let mut channel = self
-            .session
-            .channel_session()
-            .map_err(|e| AppError::internal(format!("channel open failed: {e}")))?;
+        exec_on(&self.session, command)
+    }
 
-        channel
-            .exec(command)
-            .map_err(|e| AppError::internal(format!("exec failed: {e}")))?;
-
-        let mut output = String::new();
-        channel
-            .read_to_string(&mut output)
-            .map_err(|e| AppError::internal(format!("read failed: {e}")))?;
-
-        channel
-            .wait_close()
-            .map_err(|e| AppError::internal(format!("channel close failed: {e}")))?;
-
-        Ok(output.trim().to_owned())
+    /// Same as [`Self::exec`] but runs on the secondary control session — so
+    /// short commands (cancel signals, live monitoring polls, cleanup
+    /// estimates) don't block on a long-running scan holding the primary
+    /// channel. Falls back to the primary if the secondary session failed to
+    /// initialise at connect time.
+    pub fn exec_control(&self, command: &str) -> Result<String, AppError> {
+        match &self.control_session {
+            Some(sess) => exec_on(sess, command),
+            None => exec_on(&self.session, command),
+        }
     }
 
     /// Check whether the `ionice` utility is available on the remote server.
@@ -631,6 +681,30 @@ impl SessionBundle {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Open a fresh channel on `session`, run `command`, and return stdout+stderr
+/// merged. Shared by `SessionBundle::exec` (primary) and `exec_control`
+/// (secondary) — both do the same thing, they just pick a different session.
+fn exec_on(session: &Session, command: &str) -> Result<String, AppError> {
+    let mut channel = session
+        .channel_session()
+        .map_err(|e| AppError::internal(format!("channel open failed: {e}")))?;
+
+    channel
+        .exec(command)
+        .map_err(|e| AppError::internal(format!("exec failed: {e}")))?;
+
+    let mut output = String::new();
+    channel
+        .read_to_string(&mut output)
+        .map_err(|e| AppError::internal(format!("read failed: {e}")))?;
+
+    channel
+        .wait_close()
+        .map_err(|e| AppError::internal(format!("channel close failed: {e}")))?;
+
+    Ok(output.trim().to_owned())
+}
 
 /// Escape a string so it can be safely wrapped in single quotes in a shell
 /// command. Returns `None` if the string contains a NUL byte (which a shell

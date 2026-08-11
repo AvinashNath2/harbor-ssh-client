@@ -684,12 +684,20 @@ export async function storageSystemLoad(): Promise<SystemLoad> {
   return invoke<SystemLoad>("storage_system_load");
 }
 
-export async function storageScanRoot(depth?: number): Promise<FolderSize[]> {
-  return invoke<FolderSize[]>("storage_scan_root", { depth });
+export async function storageScanRoot(
+  root: string,
+  depth?: number,
+  cancelTag?: string,
+): Promise<FolderSize[]> {
+  return invoke<FolderSize[]>("storage_scan_root", { root, depth, cancelTag });
 }
 
-export async function storageAgeHistogram(path: string): Promise<AgeHistogram> {
-  return invoke<AgeHistogram>("storage_age_histogram", { path });
+export async function storageAgeHistogram(path: string, cancelTag?: string): Promise<AgeHistogram> {
+  return invoke<AgeHistogram>("storage_age_histogram", { path, cancelTag });
+}
+
+export async function storageCancelScan(cancelTag: string): Promise<void> {
+  await invoke("storage_cancel_scan", { cancelTag });
 }
 
 export async function storageScanPath(path: string, depth?: number): Promise<FolderSize[]> {
