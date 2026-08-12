@@ -203,8 +203,7 @@ export function Toolbar({
       {/* Monitor Tasks dropdown — opens tool pages in separate windows */}
       <Menu
         icon={<Activity size={13} strokeWidth={ICON_STROKE} />}
-        label="Monitor"
-        title="Monitor tasks — opens in a new window"
+        title="Monitor tasks"
         items={[
           {
             icon: <Coffee size={12} strokeWidth={ICON_STROKE} />,
@@ -214,6 +213,11 @@ export function Toolbar({
                 host: result.host,
                 username: result.username,
               }),
+          },
+          {
+            icon: <ArrowLeftRight size={12} strokeWidth={ICON_STROKE} />,
+            label: showTunnels ? "Hide Port Forwarding" : "Show Port Forwarding",
+            onClick: onToggleTunnels,
           },
           {
             icon: <HardDrive size={12} strokeWidth={ICON_STROKE} />,
@@ -239,13 +243,6 @@ export function Toolbar({
           onClick={onToggleDualPane}
         >
           <SplitSquareHorizontal size={ICON_SIZE} strokeWidth={ICON_STROKE} />
-        </ToggleBtn>
-        <ToggleBtn
-          title={showTunnels ? "Hide tunnels" : "SSH tunnels / port forwarding"}
-          active={showTunnels}
-          onClick={onToggleTunnels}
-        >
-          <ArrowLeftRight size={ICON_SIZE} strokeWidth={ICON_STROKE} />
         </ToggleBtn>
         <ToggleBtn
           title={showTerminal ? "Hide terminal" : "Show terminal"}

@@ -29,11 +29,13 @@ export interface MenuItem {
 }
 
 export interface MenuProps {
-  /** Trigger label shown next to the icon. */
-  label: string;
+  /** Trigger label shown next to the icon. Omit for an icon-only trigger — a
+   *  `title` becomes essential in that mode for discoverability. */
+  label?: string;
   /** Optional icon rendered on the left of the trigger. */
   icon?: ReactNode;
-  /** Tooltip text for the trigger. */
+  /** Tooltip text for the trigger. Required in practice when `label` is
+   *  omitted; without it an icon-only trigger has no accessible name. */
   title?: string;
   items: MenuItem[];
   /** Which edge of the trigger the panel aligns to. Default "right". */
@@ -50,6 +52,7 @@ export function Menu({
   align = "right",
   triggerClassName = "",
 }: MenuProps) {
+  const iconOnly = !label;
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
   const [highlight, setHighlight] = useState(0);
@@ -184,8 +187,11 @@ export function Menu({
         onKeyDown={handleTriggerKey}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={iconOnly ? title : undefined}
         title={title}
-        className={`flex items-center gap-1.5 rounded-input border px-2.5 py-1.5 text-[11.5px] font-medium transition-colors ${
+        className={`flex items-center rounded-input border font-medium transition-colors ${
+          iconOnly ? "gap-1 px-1.5 py-1.5 text-[11px]" : "gap-1.5 px-2.5 py-1.5 text-[11.5px]"
+        } ${
           open
             ? "border-border-input bg-accent/[0.12] text-accent-dark"
             : "border-border-input bg-surface-chip text-text-secondary hover:bg-surface-hover hover:text-text-primary"
