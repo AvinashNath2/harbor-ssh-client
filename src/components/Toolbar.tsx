@@ -4,7 +4,6 @@ import {
   ArrowLeftRight,
   ArrowRight,
   Box,
-  ChevronDown,
   Coffee,
   FilePlus2,
   FolderPlus,
@@ -22,10 +21,10 @@ import {
   Upload as UploadIcon,
   Download as DownloadIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import type { ConnectResult } from "../api";
 import { FEATURES } from "../lib/features";
 import { openToolWindow } from "../utils/toolWindow";
+import { Menu } from "./ui/Menu";
 
 interface ToolbarProps {
   result: ConnectResult;
@@ -202,11 +201,32 @@ export function Toolbar({
       <div className="flex-1" />
 
       {/* Monitor Tasks dropdown — opens tool pages in separate windows */}
-      <MonitorDropdown
-        host={result.host}
-        username={result.username}
-        osInfo={result.osInfo}
-        defaultPath={pinnedPath}
+      <Menu
+        icon={<Activity size={13} strokeWidth={ICON_STROKE} />}
+        label="Monitor"
+        title="Monitor tasks — opens in a new window"
+        items={[
+          {
+            icon: <Coffee size={12} strokeWidth={ICON_STROKE} />,
+            label: "Java Process Monitor",
+            onClick: () =>
+              void openToolWindow("javaMonitor", {
+                host: result.host,
+                username: result.username,
+              }),
+          },
+          {
+            icon: <HardDrive size={12} strokeWidth={ICON_STROKE} />,
+            label: "Data Profiler",
+            onClick: () =>
+              void openToolWindow("dataProfiler", {
+                host: result.host,
+                username: result.username,
+                osInfo: result.osInfo,
+                defaultPath: pinnedPath,
+              }),
+          },
+        ]}
       />
 
       <div className="mx-1 h-4 w-px bg-border" />
@@ -284,97 +304,6 @@ export function Toolbar({
         Disconnect
       </button>
     </div>
-  );
-}
-
-function MonitorDropdown({
-  host,
-  username,
-  osInfo,
-  defaultPath,
-}: {
-  host: string;
-  username: string;
-  osInfo: string;
-  defaultPath?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-    };
-  }, [open]);
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <button
-        onClick={() => {
-          setOpen((v) => !v);
-        }}
-        title="Monitor tasks (opens in a new window)"
-        className={`flex items-center gap-1.5 rounded-input border px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
-          open
-            ? "border-accent-dark/40 bg-surface-hover text-accent-dark"
-            : "border-border-input bg-surface-chip text-text-secondary hover:border-accent-dark/40 hover:bg-surface-hover hover:text-accent-dark"
-        }`}
-      >
-        <Activity size={13} strokeWidth={ICON_STROKE} />
-        Monitor
-        <ChevronDown size={11} strokeWidth={ICON_STROKE} />
-      </button>
-
-      {open && (
-        <div
-          className="absolute right-0 top-[calc(100%+4px)] z-50 min-w-[220px] overflow-hidden rounded-input border border-border-raised bg-surface-pane shadow-lg"
-          role="menu"
-        >
-          <MonitorItem
-            icon={<Coffee size={13} strokeWidth={ICON_STROKE} />}
-            label="Java Process Monitor"
-            onClick={() => {
-              setOpen(false);
-              void openToolWindow("javaMonitor", { host, username });
-            }}
-          />
-          <MonitorItem
-            icon={<HardDrive size={13} strokeWidth={ICON_STROKE} />}
-            label="Data Profiler"
-            onClick={() => {
-              setOpen(false);
-              void openToolWindow("dataProfiler", { host, username, osInfo, defaultPath });
-            }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MonitorItem({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-hover"
-      role="menuitem"
-    >
-      <span className="text-text-tertiary">{icon}</span>
-      {label}
-    </button>
   );
 }
 
