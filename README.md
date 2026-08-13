@@ -114,7 +114,7 @@
 <td width="50%" valign="top">
 
 ### 💽 Data Profiler *(new in v1.3)*
-<!-- TODO(screenshot): docs/screenshots/08-data-profiler.png — Dashboard tab, whole-machine scan, showing KPIs + partition bar -->
+<img src="docs/screenshots/08-data-profiler.png" width="100%" alt="Data Profiler dashboard" />
 
 - Disk usage · age histogram · categories
 - Scoped scans with per-directory KPIs
@@ -136,45 +136,49 @@ The Data Profiler ships in its own window (icon next to Docker Infrastructure in
 <tr>
 <td width="50%" valign="top">
 
-**Scope-aware overview**
-<!-- TODO(screenshot): docs/screenshots/09-scope-overview.png — Directory Overview panel with amber scoped callout, path chip, share-of-partition bar -->
+**Safer Deep Scan — scope picker**
+<img src="docs/screenshots/10-scope-modal.png" width="100%" alt="Deep Scan scope picker" />
 
-- Whole-machine mode: `df` KPIs + partition bar
-- Scoped mode: KPIs derived from *that folder only*, share-of-partition strip, amber "this is scoped, not machine-wide" callout
+- Pick a directory OR the whole filesystem — recommended is *"specific directory"* on production
+- Quick-pick chips: `/var/log` · `/var/lib/docker` · `/home` · `/tmp` · `~`
+- Instant cancel via a 2nd SSH channel (`pkill` by tag) — no waiting for the current step to finish
+- Server Load box stays live during scans
 
 </td>
 <td width="50%" valign="top">
 
-**Safer Deep Scan**
-<!-- TODO(screenshot): docs/screenshots/10-scope-modal.png — Deep Scan scope picker modal -->
+**Largest Items — identify & delete**
+<img src="docs/screenshots/12-sudo-delete.png" width="100%" alt="Largest Items with sudo delete" />
 
-- Pick a directory OR the whole filesystem
-- Instant cancel via a 2nd SSH channel (`pkill` by tag) — no waiting for the current step to finish
-- Server Load box stays live during scans
+- Files/folders sorted by size · Copy path · Browse · Delete
+- Multi-select via checkboxes + bulk action bar
+- Two-step confirmation — permission preflight flags 🔒 items
+- Opt-in `sudo -n rm -rf` on the control channel for root-owned items
+- "Retry failed with sudo" one-click after any perm-denied
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-**Largest Items + delete**
-<!-- TODO(screenshot): docs/screenshots/11-largest-items.png — Largest Items with checkboxes + bulk action bar -->
+**Duplicate scanner**
+<img src="docs/screenshots/13-duplicates.png" width="100%" alt="Duplicate scanner results" />
 
-- Files and folders sorted by size
-- Multi-select via checkboxes + bulk action bar
-- Copy path · Browse in file manager · Delete
-- Two-step confirmation on every delete
+- Groups files by exact byte size — no content read, safe on prod
+- Configurable root, min file size, max depth
+- Recoverable-bytes summary per group
+- Browse each duplicate in the file explorer
 
 </td>
 <td width="50%" valign="top">
 
-**Sudo escalation**
-<!-- TODO(screenshot): docs/screenshots/12-sudo-delete.png — DeleteConfirmDialog Step 2 with "Use sudo" checkbox visible -->
+**Scope-aware Directory Overview**
+<!-- TODO(screenshot): docs/screenshots/09-scope-overview.png — Directory Overview panel with amber scoped callout, path chip, share-of-partition bar -->
 
-- Preflight probes writability of each item's parent
-- Root-owned items flagged with a 🔒 icon
-- Opt-in `sudo -n rm -rf` via control SSH channel
-- "Retry failed with sudo" one-click after any perm-denied
+- **Whole-machine mode:** `df` KPIs + partition bar
+- **Scoped mode:** KPIs derived from *that folder only* — Directory Size (from `du -sB1`), Files, Avg File Size, Top-level Entries, Parent Partition
+- Amber *"this is scoped, not machine-wide"* callout so numbers are never misread
+- Share-of-partition strip: how much of the parent partition this folder occupies
 
 </td>
 </tr>
