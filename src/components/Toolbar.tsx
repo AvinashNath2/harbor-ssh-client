@@ -200,7 +200,9 @@ export function Toolbar({
 
       <div className="flex-1" />
 
-      {/* Monitor Tasks dropdown — opens tool pages in separate windows */}
+      {/* Monitor Tasks dropdown — opens tool pages in separate windows.
+          Data Profiler was pulled out to a standalone toolbar icon next to
+          Docker Infrastructure so it's one click away without opening the menu. */}
       <Menu
         icon={<Activity size={13} strokeWidth={ICON_STROKE} />}
         title="Monitor tasks"
@@ -218,17 +220,6 @@ export function Toolbar({
             icon: <ArrowLeftRight size={12} strokeWidth={ICON_STROKE} />,
             label: showTunnels ? "Hide Port Forwarding" : "Show Port Forwarding",
             onClick: onToggleTunnels,
-          },
-          {
-            icon: <HardDrive size={12} strokeWidth={ICON_STROKE} />,
-            label: "Data Profiler",
-            onClick: () =>
-              void openToolWindow("dataProfiler", {
-                host: result.host,
-                username: result.username,
-                osInfo: result.osInfo,
-                defaultPath: pinnedPath,
-              }),
           },
         ]}
       />
@@ -258,6 +249,22 @@ export function Toolbar({
         >
           <Box size={ICON_SIZE} strokeWidth={ICON_STROKE} />
         </ToggleBtn>
+        {/* Data Profiler — icon-only launcher; opens the tool page in its own
+            window. Sits next to Docker Infrastructure so it reads as another
+            "workspace" the user can jump into with one click. */}
+        <ToolBtn
+          title="Data Profiler — disk usage, largest items, cleanup"
+          onClick={() =>
+            void openToolWindow("dataProfiler", {
+              host: result.host,
+              username: result.username,
+              osInfo: result.osInfo,
+              defaultPath: pinnedPath,
+            })
+          }
+        >
+          <HardDrive size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+        </ToolBtn>
         {FEATURES.AI ? (
           <ToggleBtn
             title={showChat ? "Hide AI Chat" : "Show AI Chat"}
