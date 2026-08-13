@@ -84,19 +84,8 @@ export default function App() {
     creds: ConnectCredentialOptions;
   } | null>(null);
 
-  // Kill the WebKit default context menu ("Inspect Element", "Reload", etc).
-  // Allow xterm's own context-menu / selection behaviour inside terminals.
-  useEffect(() => {
-    function block(e: MouseEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest(".xterm")) return;
-      e.preventDefault();
-    }
-    document.addEventListener("contextmenu", block);
-    return () => {
-      document.removeEventListener("contextmenu", block);
-    };
-  }, []);
+  // Context-menu blocking + devtools shortcut blocking live in main.tsx now so
+  // they cover tool child windows too (Data Profiler, Java Monitor, Session Log).
 
   const [reconnectStatus, setReconnectStatus] = useState<
     | { kind: "idle" }
