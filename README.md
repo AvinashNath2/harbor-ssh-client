@@ -113,14 +113,14 @@
 </td>
 <td width="50%" valign="top">
 
-### 💽 Data Profiler *(new)*
+### 💽 Data Profiler *(new in v1.3)*
 <!-- TODO(screenshot): docs/screenshots/08-data-profiler.png — Dashboard tab, whole-machine scan, showing KPIs + partition bar -->
-<img src="docs/screenshots/08-data-profiler.png" width="100%" alt="Data Profiler dashboard" />
 
 - Disk usage · age histogram · categories
 - Scoped scans with per-directory KPIs
 - Largest files & folders · multi-select delete
 - Sudo-elevated delete when needed
+- Instant-cancel Deep Scan via second SSH channel
 
 </td>
 </tr>
@@ -138,7 +138,6 @@ The Data Profiler ships in its own window (icon next to Docker Infrastructure in
 
 **Scope-aware overview**
 <!-- TODO(screenshot): docs/screenshots/09-scope-overview.png — Directory Overview panel with amber scoped callout, path chip, share-of-partition bar -->
-<img src="docs/screenshots/09-scope-overview.png" width="100%" alt="Scope Overview" />
 
 - Whole-machine mode: `df` KPIs + partition bar
 - Scoped mode: KPIs derived from *that folder only*, share-of-partition strip, amber "this is scoped, not machine-wide" callout
@@ -148,7 +147,6 @@ The Data Profiler ships in its own window (icon next to Docker Infrastructure in
 
 **Safer Deep Scan**
 <!-- TODO(screenshot): docs/screenshots/10-scope-modal.png — Deep Scan scope picker modal -->
-<img src="docs/screenshots/10-scope-modal.png" width="100%" alt="Deep Scan scope picker" />
 
 - Pick a directory OR the whole filesystem
 - Instant cancel via a 2nd SSH channel (`pkill` by tag) — no waiting for the current step to finish
@@ -161,7 +159,6 @@ The Data Profiler ships in its own window (icon next to Docker Infrastructure in
 
 **Largest Items + delete**
 <!-- TODO(screenshot): docs/screenshots/11-largest-items.png — Largest Items with checkboxes + bulk action bar -->
-<img src="docs/screenshots/11-largest-items.png" width="100%" alt="Largest Items" />
 
 - Files and folders sorted by size
 - Multi-select via checkboxes + bulk action bar
@@ -173,7 +170,6 @@ The Data Profiler ships in its own window (icon next to Docker Infrastructure in
 
 **Sudo escalation**
 <!-- TODO(screenshot): docs/screenshots/12-sudo-delete.png — DeleteConfirmDialog Step 2 with "Use sudo" checkbox visible -->
-<img src="docs/screenshots/12-sudo-delete.png" width="100%" alt="Sudo delete" />
 
 - Preflight probes writability of each item's parent
 - Root-owned items flagged with a 🔒 icon
