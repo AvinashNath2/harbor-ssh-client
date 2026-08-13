@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  deletePath,
   storageAgeHistogram,
   storageCancelScan,
   storageCategorySizes,
@@ -593,6 +594,56 @@ export function useStorageAnalyzer() {
     [appendLog, flushLogs],
   );
 
+  /**
+   * Delete a single entry (file OR folder) from the largest-items table, then
+   * optimistically remove the row so the UI updates without re-scanning.
+   *
+   * Rethrows on failure so the caller (DeleteConfirmDialog) can show the error
+   * inline and leave the row in place.
+   */
+  const deleteLargestItem = useCallback(
+    async (path: string, kind: "file" | "folder") => {
+      const cycle = ++_fetchCycle;
+      const l: StorageLogEntry[] = [];
+      appendLog(
+        { level: "info", source: "largest", message: `Deleting ${kind}: ${path}` },
+        cycle,
+        l,
+      );
+      flushLogs(l);
+
+      try {
+        await deletePath(path);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const l2: StorageLogEntry[] = [];
+        appendLog(
+          { level: "error", source: "largest", message: `Delete failed: ${msg}` },
+          cycle,
+          l2,
+        );
+        flushLogs(l2);
+        throw e;
+      }
+
+      const l3: StorageLogEntry[] = [];
+      appendLog(
+        { level: "info", source: "largest", message: `Deleted ${path}` },
+        cycle,
+        l3,
+      );
+      flushLogs(l3);
+
+      // Optimistic removal — the deleted path drops out of both lists.
+      setState((s) => ({
+        ...s,
+        largestFiles: s.largestFiles.filter((f) => f.path !== path),
+        largestFolders: s.largestFolders.filter((f) => f.path !== path),
+      }));
+    },
+    [appendLog, flushLogs],
+  );
+
   // ── Phase 4: Cleanup + Duplicates ───────────────────────────────────────────
 
   const checkSudoAvailable = useCallback(async () => {
@@ -794,6 +845,7 @@ export function useStorageAnalyzer() {
     expandNode,
     collapseNode,
     fetchLargestItems,
+    deleteLargestItem,
     checkSudoAvailable,
     runCleanupEstimate,
     runCleanupPreview,

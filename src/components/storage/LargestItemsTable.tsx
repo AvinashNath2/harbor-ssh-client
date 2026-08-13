@@ -1,7 +1,8 @@
-import { ArrowDown, ArrowUp, Check, Copy, ExternalLink } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Copy, ExternalLink, Trash2 } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { LargestFile } from "../../api";
 import { formatBytes } from "../../utils/storageHealth";
+import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 
 /** Extract the trailing filename / folder name from a POSIX path. */
 function basename(path: string): string {
@@ -21,6 +22,9 @@ interface LargestItemsTableProps {
   onBrowse?: (path: string) => void;
   onRefresh: (root: string) => void;
   root: string;
+  /** Optional destructive action — when provided, each row shows a red Trash
+   *  button that opens a two-step confirmation dialog before calling this. */
+  onDelete?: (path: string, kind: "file" | "folder") => Promise<void>;
 }
 
 export function LargestItemsTable({
@@ -30,6 +34,7 @@ export function LargestItemsTable({
   onBrowse,
   onRefresh,
   root,
+  onDelete,
 }: LargestItemsTableProps) {
   const [kind, setKind] = useState<Kind>("files");
   const [sortKey, setSortKey] = useState<SortKey>("size_bytes");
@@ -37,6 +42,8 @@ export function LargestItemsTable({
   /** Path of the row that was just copied — shows a "Copied ✓ /full/path"
    *  reveal underneath the filename for a couple of seconds. */
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  /** Row currently in the two-step delete dialog. Null when nothing pending. */
+  const [pendingDelete, setPendingDelete] = useState<LargestFile | null>(null);
 
   function copyPath(path: string) {
     void navigator.clipboard.writeText(path);
@@ -241,18 +248,32 @@ export function LargestItemsTable({
                       </td>
                     )}
                     <td className="px-4 py-2">
-                      {onBrowse && (
-                        <button
-                          onClick={() => {
-                            onBrowse(dir);
-                          }}
-                          className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-accent"
-                          title={`Browse ${dir}`}
-                        >
-                          <ExternalLink size={10} />
-                          Browse
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {onBrowse && (
+                          <button
+                            onClick={() => {
+                              onBrowse(dir);
+                            }}
+                            className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-text-faint transition-colors hover:bg-surface-chip hover:text-text-accent"
+                            title={`Browse ${dir}`}
+                          >
+                            <ExternalLink size={10} />
+                            Browse
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button
+                            onClick={() => {
+                              setPendingDelete(item);
+                            }}
+                            className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-red-500/80 transition-colors hover:bg-red-50 hover:text-red-600"
+                            title={`Delete this ${kind === "files" ? "file" : "folder"}`}
+                          >
+                            <Trash2 size={10} strokeWidth={2.1} />
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -260,6 +281,21 @@ export function LargestItemsTable({
             </tbody>
           </table>
         </div>
+      )}
+
+      {pendingDelete && onDelete && (
+        <DeleteConfirmDialog
+          path={pendingDelete.path}
+          sizeBytes={pendingDelete.size_bytes}
+          kind={kind === "files" ? "file" : "folder"}
+          onCancel={() => {
+            setPendingDelete(null);
+          }}
+          onConfirm={async () => {
+            await onDelete(pendingDelete.path, kind === "files" ? "file" : "folder");
+            setPendingDelete(null);
+          }}
+        />
       )}
     </div>
   );

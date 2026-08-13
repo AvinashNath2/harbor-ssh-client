@@ -113,12 +113,14 @@ pub async fn storage_overview(
             let use_pct: f64 = pct_str.parse().unwrap_or(0.0);
             let mount = cols[5].to_string();
 
-            // Skip pseudo-filesystems
+            // Skip pseudo-filesystems. `overlay` intentionally NOT filtered:
+            // on Docker/K8s container hosts (including our own test-vm) it IS
+            // the root filesystem, and hiding it broke ScopeOverview's
+            // parent-partition lookup for any scoped scan.
             if fs == "tmpfs"
                 || fs == "devtmpfs"
                 || fs == "udev"
                 || fs == "none"
-                || fs.starts_with("overlay")
                 || fs.contains("shm")
                 || fs.starts_with("cgroup")
                 || fs.starts_with("proc")
@@ -136,6 +138,26 @@ pub async fn storage_overview(
                 use_pct,
             });
         }
+
+        // Dedupe filesystem aliases. Two df rows reporting IDENTICAL total,
+        // used, and avail bytes are almost certainly the same underlying
+        // storage seen through two mount points (Docker overlay + /dev/vda1
+        // for /config, bind mounts, etc.). Without this dedupe the whole-
+        // machine KPIs double-count: on a 911 GB container disk the UI was
+        // reporting 1.8 TB total.
+        //
+        // Selection rule: within a duplicate group, keep the mount with the
+        // shortest path (the root-most view of the filesystem — `/` beats
+        // `/config`). This keeps the `findParentMount()` lookup in the
+        // frontend working, since `/data` needs a `/` mount to match.
+        mounts.sort_by(|a, b| {
+            a.mount
+                .len()
+                .cmp(&b.mount.len())
+                .then_with(|| a.mount.cmp(&b.mount))
+        });
+        let mut seen = std::collections::HashSet::new();
+        mounts.retain(|m| seen.insert((m.total, m.used, m.avail)));
 
         Ok(mounts)
     })

@@ -1,5 +1,4 @@
 import {
-  Activity,
   Database,
   FolderOpen,
   HardDrive,
@@ -19,8 +18,8 @@ import { AgeHistogramBar } from "./storage/AgeHistogram";
 import { CleanupCenter } from "./storage/CleanupCenter";
 import { CategoryDonut, PartitionsBar } from "./storage/DashboardCharts";
 import { DuplicatesTab } from "./storage/DuplicatesTab";
-import { KpiCard } from "./storage/KpiCard";
 import { LargestItemsTable } from "./storage/LargestItemsTable";
+import { ScopeOverview } from "./storage/ScopeOverview";
 import { SettingsTab } from "./storage/SettingsTab";
 import { DeepScanScopeModal } from "./storage/DeepScanScopeModal";
 import { ServerLoadPopup } from "./storage/ServerLoadPopup";
@@ -70,6 +69,7 @@ export function StorageAnalyzerPage({
     expandNode,
     collapseNode,
     fetchLargestItems,
+    deleteLargestItem,
     checkSudoAvailable,
     runCleanupEstimate,
     runCleanupPreview,
@@ -81,12 +81,10 @@ export function StorageAnalyzerPage({
   // so the sidebar strip stays live even when no scan is running.
   const serverLoad = useServerLoad(true);
 
-  // Aggregate KPIs across mounts
+  // Sum of all mount totals — passed to ExplorerTab so folder-size bars can
+  // scale against machine-wide disk. ScopeOverview computes its own totals
+  // internally from either mounts (whole-machine) or the age histogram (scoped).
   const totalBytes = state.mounts.reduce((s, m) => s + m.total, 0);
-  const usedBytes = state.mounts.reduce((s, m) => s + m.used, 0);
-  const freeBytes = state.mounts.reduce((s, m) => s + m.avail, 0);
-  const usePct = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0;
-  const totalFileCount = state.ageHistogram?.total_files ?? null;
 
   function handleTabChange(tab: Tab) {
     setActiveTab(tab);
@@ -102,57 +100,74 @@ export function StorageAnalyzerPage({
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-surface">
       {/* ── Top nav ─────────────────────────────────────────────────────────── */}
-      <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-5 py-3 bg-surface-titlebar">
-        <div className="flex items-center gap-2">
+      {/*
+       * Responsive priority: identity + server pill + primary actions (Refresh,
+       * Deep Scan, Close) are ALWAYS visible. Secondary metadata (OS, uptime,
+       * updated-at) hides progressively as width shrinks, so buttons never wrap
+       * or grow vertically. Locked `min-h-[52px]` keeps the bar exactly one
+       * row tall regardless of content.
+       */}
+      <div className="flex min-h-[52px] flex-shrink-0 items-center gap-3 overflow-hidden border-b border-border bg-surface-titlebar px-5 py-2">
+        {/* Left cluster — identity */}
+        <div className="flex flex-shrink-0 items-center gap-2">
           <HardDrive size={18} className="text-[#3f7be0]" />
-          <span className="text-[14px] font-semibold text-text-primary">Data Profiler</span>
+          <span className="whitespace-nowrap text-[14px] font-semibold text-text-primary">
+            Data Profiler
+          </span>
         </div>
 
-        <div className="mx-2 h-4 w-px flex-shrink-0" style={{ background: "#dedad3" }} />
+        <div className="h-4 w-px flex-shrink-0" style={{ background: "#dedad3" }} />
 
-        {/* Server pill */}
-        <div className="flex items-center gap-1.5 rounded-lg bg-surface-chip px-2.5 py-1">
+        {/* Server pill — always visible; truncates for very long hosts */}
+        <div className="flex min-w-0 max-w-[220px] flex-shrink items-center gap-1.5 rounded-lg bg-surface-chip px-2.5 py-1">
           <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-green-400" />
-          <span className="font-mono text-[12px] text-text-primary">
+          <span className="truncate whitespace-nowrap font-mono text-[12px] text-text-primary">
             {username}@{host}
           </span>
         </div>
 
+        {/* Secondary metadata — hides on smaller widths, in priority order */}
         {state.sysInfo && (
           <>
-            <span className="text-[11.5px] text-text-faint">
+            <span className="hidden whitespace-nowrap text-[11.5px] text-text-faint xl:inline">
               {state.sysInfo.os_name} {state.sysInfo.os_version}
             </span>
-            <span className="text-[11.5px] text-text-faint">{state.sysInfo.uptime}</span>
+            <span className="hidden max-w-[220px] truncate whitespace-nowrap text-[11.5px] text-text-faint 2xl:inline">
+              {state.sysInfo.uptime}
+            </span>
           </>
         )}
 
         {osInfo && !state.sysInfo && (
-          <span className="text-[11.5px] text-text-faint">{osInfo}</span>
+          <span className="hidden whitespace-nowrap text-[11.5px] text-text-faint xl:inline">
+            {osInfo}
+          </span>
         )}
 
         {state.lastRefresh && (
-          <span className="text-[11px] text-text-faint">
+          <span className="hidden whitespace-nowrap text-[11px] text-text-faint lg:inline">
             Updated {new Date(state.lastRefresh).toLocaleTimeString()}
           </span>
         )}
 
-        <div className="flex-1" />
+        <div className="min-w-4 flex-1" />
 
+        {/* Right cluster — actions. Every button `flex-shrink-0` so they NEVER
+            wrap or shrink. Refresh label collapses to icon-only below `md`. */}
         <button
           onClick={() => void fetchOverview()}
           disabled={state.loading}
-          className="flex items-center gap-1.5 rounded-lg border border-border-input px-3 py-1.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-chip hover:text-text-primary disabled:opacity-50"
+          className="flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg border border-border-input px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-chip hover:text-text-primary disabled:opacity-50"
           title="Refresh disk overview (df)"
         >
           <RefreshCw size={12} className={state.loading ? "animate-spin" : ""} />
-          Refresh Overview
+          <span className="hidden whitespace-nowrap md:inline">Refresh Overview</span>
         </button>
 
-        {/* Scope-of-last-scan chip — only when a scan has actually completed */}
+        {/* Scope-of-last-scan chip — long paths truncate but the chip stays put */}
         {state.scannedRoot !== null && !state.deepScanning && (
           <div
-            className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11.5px] font-mono"
+            className="flex h-8 max-w-[260px] flex-shrink-0 items-center gap-1.5 rounded-lg border px-2.5 font-mono text-[11.5px]"
             style={
               state.scannedRoot === "/"
                 ? {
@@ -172,9 +187,11 @@ export function StorageAnalyzerPage({
                 : `The current dashboard reflects a scoped scan of ${state.scannedRoot}`
             }
           >
-            {state.scannedRoot === "/" ? "🌐 Whole machine" : `🔎 Scan of ${state.scannedRoot}`}
+            <span className="truncate whitespace-nowrap">
+              {state.scannedRoot === "/" ? "🌐 Whole machine" : `🔎 Scan of ${state.scannedRoot}`}
+            </span>
             {state.lastDeepScan !== null && (
-              <span className="opacity-70">
+              <span className="hidden flex-shrink-0 whitespace-nowrap opacity-70 lg:inline">
                 · {new Date(state.lastDeepScan).toLocaleTimeString()}
               </span>
             )}
@@ -190,7 +207,7 @@ export function StorageAnalyzerPage({
             }
           }}
           disabled={!state.deepScanning && state.loading}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           style={{
             background: state.deepScanning
               ? "linear-gradient(135deg,#ef4444,#dc2626)"
@@ -215,7 +232,7 @@ export function StorageAnalyzerPage({
 
         <button
           onClick={onClose}
-          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-chip hover:text-text-primary"
+          className="ml-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-chip hover:text-text-primary"
           title="Close"
         >
           <X size={14} />
@@ -276,16 +293,7 @@ export function StorageAnalyzerPage({
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto p-6">
-          {activeTab === "dashboard" && (
-            <DashboardTab
-              state={state}
-              totalBytes={totalBytes}
-              usedBytes={usedBytes}
-              freeBytes={freeBytes}
-              usePct={usePct}
-              totalFileCount={totalFileCount}
-            />
-          )}
+          {activeTab === "dashboard" && <DashboardTab state={state} />}
 
           {activeTab === "explorer" && (
             <ExplorerTab
@@ -305,6 +313,7 @@ export function StorageAnalyzerPage({
               onBrowse={onBrowse}
               onRefresh={(root) => void fetchLargestItems(root)}
               root="/"
+              onDelete={deleteLargestItem}
             />
           )}
 
@@ -407,74 +416,19 @@ export function StorageAnalyzerPage({
 
 interface DashboardTabProps {
   state: ReturnType<typeof useStorageAnalyzer>["state"];
-  totalBytes: number;
-  usedBytes: number;
-  freeBytes: number;
-  usePct: number;
-  totalFileCount: number | null;
 }
 
-function DashboardTab({
-  state,
-  totalBytes,
-  usedBytes,
-  freeBytes,
-  usePct,
-  totalFileCount,
-}: DashboardTabProps) {
-  const overallTier = mountHealth(usePct);
-  const tierColor = HEALTH_COLOR[overallTier];
-
+function DashboardTab({ state }: DashboardTabProps) {
   return (
     <div className="flex flex-col gap-6">
-      <section>
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-text-faint">
-          Disk Overview
-        </h2>
-
-        {state.loading && state.mounts.length === 0 ? (
-          <div className="flex items-center gap-2 text-[12px] text-text-faint">
-            <RefreshCw size={12} className="animate-spin" />
-            Loading…
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-3 xl:grid-cols-6">
-            <KpiCard
-              label="Total Disk"
-              value={formatBytes(totalBytes)}
-              icon={<HardDrive size={14} />}
-            />
-            <KpiCard
-              label="Used"
-              value={formatBytes(usedBytes)}
-              color={tierColor}
-              icon={<Database size={14} />}
-            />
-            <KpiCard
-              label="Free"
-              value={formatBytes(freeBytes)}
-              color="#22c55e"
-              icon={<HardDrive size={14} />}
-            />
-            <KpiCard
-              label="Use %"
-              value={`${usePct.toFixed(1)}%`}
-              color={tierColor}
-              icon={<Activity size={14} />}
-            />
-            <KpiCard
-              label={
-                state.scannedRoot !== null && state.scannedRoot !== "/"
-                  ? `Total files in ${state.scannedRoot}`
-                  : "Total Files"
-              }
-              value={totalFileCount !== null ? totalFileCount.toLocaleString() : "—"}
-              sub={totalFileCount === null ? "Run Deep Scan" : undefined}
-              icon={<ScrollText size={14} />}
-            />
-          </div>
-        )}
-      </section>
+      <ScopeOverview
+        scannedRoot={state.scannedRoot}
+        mounts={state.mounts}
+        ageHistogram={state.ageHistogram}
+        rootFolders={state.rootFolders}
+        lastDeepScan={state.lastDeepScan}
+        loading={state.loading}
+      />
 
       <section>
         <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-text-faint">
@@ -600,14 +554,26 @@ function DashboardTab({
         </div>
       </section>
 
-      <section>
-        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-text-faint">
-          Usage per Partition
-        </h2>
-        <div className="rounded-xl border border-border-raised bg-surface-pane p-5">
-          <PartitionsBar mounts={state.mounts} />
-        </div>
-      </section>
+      {(() => {
+        const scoped = state.scannedRoot !== null && state.scannedRoot !== "/";
+        if (scoped) {
+          // ScopeOverview already shows the parent-partition comparison strip
+          // for the scanned directory. Skip the machine-wide partitions bar
+          // entirely here — showing all partitions in scoped mode is exactly
+          // the "mixed context" bug we set out to fix.
+          return null;
+        }
+        return (
+          <section>
+            <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-text-faint">
+              Usage per Partition
+            </h2>
+            <div className="rounded-xl border border-border-raised bg-surface-pane p-5">
+              <PartitionsBar mounts={state.mounts} />
+            </div>
+          </section>
+        );
+      })()}
     </div>
   );
 }
