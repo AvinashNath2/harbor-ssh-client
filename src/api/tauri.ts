@@ -160,6 +160,25 @@ export async function deletePath(path: string): Promise<void> {
   await invoke("delete_path", { path });
 }
 
+/**
+ * Same as `deletePath`, but escalates via `sudo -n rm -rf` on the control
+ * channel. Fails cleanly (permission-denied) if passwordless sudo isn't
+ * configured for the SSH user.
+ */
+export async function deletePathSudo(path: string): Promise<void> {
+  await invoke("delete_path_sudo", { path });
+}
+
+/**
+ * Batch-probe whether the connected user can delete each of the given paths
+ * (write access on the parent directory). Same-length boolean array is
+ * returned; `true` = safe to call `deletePath`, `false` = will fail without
+ * sudo. Powered by a single SSH exec so N paths do NOT cost N round-trips.
+ */
+export async function checkWritable(paths: string[]): Promise<boolean[]> {
+  return invoke<boolean[]>("check_writable", { paths });
+}
+
 export async function downloadFile(remotePath: string, localPath: string): Promise<number> {
   return invoke<number>("download_file", { remotePath, localPath });
 }

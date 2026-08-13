@@ -1,8 +1,8 @@
 import { ArrowDown, ArrowUp, Check, Copy, ExternalLink, Trash2 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { LargestFile } from "../../api";
 import { formatBytes } from "../../utils/storageHealth";
-import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
+import { DeleteConfirmDialog, type DeleteConfirmItem } from "./DeleteConfirmDialog";
 
 /** Extract the trailing filename / folder name from a POSIX path. */
 function basename(path: string): string {
@@ -23,8 +23,9 @@ interface LargestItemsTableProps {
   onRefresh: (root: string) => void;
   root: string;
   /** Optional destructive action — when provided, each row shows a red Trash
-   *  button that opens a two-step confirmation dialog before calling this. */
-  onDelete?: (path: string, kind: "file" | "folder") => Promise<void>;
+   *  button AND rows become selectable for bulk deletion. The `useSudo` flag
+   *  is set by the dialog when the user opts to elevate a specific item. */
+  onDelete?: (path: string, kind: "file" | "folder", useSudo: boolean) => Promise<void>;
 }
 
 export function LargestItemsTable({
@@ -39,11 +40,15 @@ export function LargestItemsTable({
   const [kind, setKind] = useState<Kind>("files");
   const [sortKey, setSortKey] = useState<SortKey>("size_bytes");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  /** Path of the row that was just copied — shows a "Copied ✓ /full/path"
-   *  reveal underneath the filename for a couple of seconds. */
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
-  /** Row currently in the two-step delete dialog. Null when nothing pending. */
-  const [pendingDelete, setPendingDelete] = useState<LargestFile | null>(null);
+  /** Paths currently selected via checkbox. Cleared when the user switches
+   *  between the Files and Folders tabs (they show different data). */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  /** When set, the delete dialog is open. `pendingBatch` carries the exact
+   *  items and their kind (files vs folders) at the moment the user clicked
+   *  Delete — so switching tabs while the dialog is up can't corrupt what's
+   *  about to be deleted. */
+  const [pendingBatch, setPendingBatch] = useState<DeleteConfirmItem[] | null>(null);
 
   function copyPath(path: string) {
     void navigator.clipboard.writeText(path);
@@ -54,6 +59,7 @@ export function LargestItemsTable({
   }
 
   const data = kind === "files" ? files : folders;
+  const rowKind: "file" | "folder" = kind === "files" ? "file" : "folder";
 
   const sorted = useMemo(() => {
     const copy = [...data];
@@ -76,6 +82,55 @@ export function LargestItemsTable({
     }
   }
 
+  function toggleSelected(path: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
+
+  const allVisibleSelected = sorted.length > 0 && sorted.every((r) => selected.has(r.path));
+  const someVisibleSelected = sorted.some((r) => selected.has(r.path));
+
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      if (allVisibleSelected) {
+        // Deselect every visible row; keep any selections outside current view (there aren't any today, but future-proof)
+        const next = new Set(prev);
+        for (const r of sorted) next.delete(r.path);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const r of sorted) next.add(r.path);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
+
+  function switchKind(k: Kind) {
+    setKind(k);
+    // Selection is per-view: switching tabs shows different data, so any
+    // selection would be meaningless in the new list.
+    clearSelection();
+  }
+
+  function openBulkDelete() {
+    const items: DeleteConfirmItem[] = sorted
+      .filter((r) => selected.has(r.path))
+      .map((r) => ({ path: r.path, sizeBytes: r.size_bytes, kind: rowKind }));
+    if (items.length === 0) return;
+    setPendingBatch(items);
+  }
+
+  function openSingleDelete(item: LargestFile) {
+    setPendingBatch([{ path: item.path, sizeBytes: item.size_bytes, kind: rowKind }]);
+  }
+
   function SortIcon({ col }: { col: SortKey }) {
     if (sortKey !== col) return null;
     return sortDir === "desc" ? (
@@ -86,6 +141,10 @@ export function LargestItemsTable({
   }
 
   const hasData = data.length > 0;
+  const selectedCount = selected.size;
+  const selectedTotalBytes = sorted
+    .filter((r) => selected.has(r.path))
+    .reduce((s, r) => s + r.size_bytes, 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -96,7 +155,7 @@ export function LargestItemsTable({
             <button
               key={k}
               onClick={() => {
-                setKind(k);
+                switchKind(k);
               }}
               className={`px-4 py-1.5 text-[12px] font-medium transition-colors capitalize ${
                 kind === k
@@ -126,6 +185,32 @@ export function LargestItemsTable({
         </button>
       </div>
 
+      {/* Bulk-selection action bar — appears only when at least one row is picked */}
+      {onDelete && selectedCount > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border border-accent/40 bg-accent/[0.06] px-3 py-2">
+          <span className="text-[12px] font-medium text-accent-dark">
+            {selectedCount} selected
+          </span>
+          <span className="text-[11.5px] text-text-tertiary">
+            · {formatBytes(selectedTotalBytes)} total
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={clearSelection}
+            className="rounded-md border border-border-input bg-surface-pane px-2.5 py-1 text-[11.5px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            Clear
+          </button>
+          <button
+            onClick={openBulkDelete}
+            className="flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1 text-[11.5px] font-semibold text-white transition-colors hover:bg-red-700"
+          >
+            <Trash2 size={11} strokeWidth={2.2} />
+            Delete selected
+          </button>
+        </div>
+      )}
+
       {/* Empty / loading state */}
       {!hasData && (
         <div className="flex flex-col items-center gap-2 py-16 text-center">
@@ -151,6 +236,20 @@ export function LargestItemsTable({
                 className="border-b text-left"
                 style={{ borderColor: "#dedad3", background: "#ece9e3" }}
               >
+                {onDelete && (
+                  <th className="w-10 px-3 py-2.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = !allVisibleSelected && someVisibleSelected;
+                      }}
+                      onChange={toggleSelectAll}
+                      title={allVisibleSelected ? "Deselect all" : "Select all"}
+                      className="h-3.5 w-3.5 cursor-pointer accent-red-600"
+                    />
+                  </th>
+                )}
                 <th className="w-10 px-3 py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-widest text-text-faint">
                   #
                 </th>
@@ -191,13 +290,29 @@ export function LargestItemsTable({
                   kind === "folders"
                     ? item.path
                     : item.path.split("/").slice(0, -1).join("/") || "/";
+                const isSelected = selected.has(item.path);
 
                 return (
                   <tr
                     key={item.path}
-                    className="border-b transition-colors hover:bg-surface-chip"
+                    className={`border-b transition-colors ${
+                      isSelected ? "bg-red-50/40" : "hover:bg-surface-chip"
+                    }`}
                     style={{ borderColor: "#e5e2db" }}
                   >
+                    {onDelete && (
+                      <td className="px-3 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            toggleSelected(item.path);
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-red-600"
+                          aria-label={`Select ${basename(item.path)}`}
+                        />
+                      </td>
+                    )}
                     <td className="px-3 py-2 text-center text-[11px] font-medium text-text-faint">
                       {idx + 1}
                     </td>
@@ -264,10 +379,10 @@ export function LargestItemsTable({
                         {onDelete && (
                           <button
                             onClick={() => {
-                              setPendingDelete(item);
+                              openSingleDelete(item);
                             }}
                             className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-red-500/80 transition-colors hover:bg-red-50 hover:text-red-600"
-                            title={`Delete this ${kind === "files" ? "file" : "folder"}`}
+                            title={`Delete this ${rowKind}`}
                           >
                             <Trash2 size={10} strokeWidth={2.1} />
                             Delete
@@ -283,17 +398,29 @@ export function LargestItemsTable({
         </div>
       )}
 
-      {pendingDelete && onDelete && (
+      {pendingBatch && onDelete && (
         <DeleteConfirmDialog
-          path={pendingDelete.path}
-          sizeBytes={pendingDelete.size_bytes}
-          kind={kind === "files" ? "file" : "folder"}
+          items={pendingBatch}
           onCancel={() => {
-            setPendingDelete(null);
+            setPendingBatch(null);
           }}
-          onConfirm={async () => {
-            await onDelete(pendingDelete.path, kind === "files" ? "file" : "folder");
-            setPendingDelete(null);
+          onDelete={async (item, useSudo) => {
+            await onDelete(item.path, item.kind, useSudo);
+          }}
+          onFinished={(result) => {
+            // Any successfully-deleted paths drop out of selection automatically
+            // via the hook's optimistic filter. Clear the leftover selection
+            // (only the failed paths would remain).
+            if (result.deleted > 0) {
+              setSelected((prev) => {
+                const next = new Set(prev);
+                for (const it of pendingBatch) {
+                  const stillPresentAsFailure = result.failed.some((f) => f.path === it.path);
+                  if (!stillPresentAsFailure) next.delete(it.path);
+                }
+                return next;
+              });
+            }
           }}
         />
       )}

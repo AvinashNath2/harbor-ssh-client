@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deletePath,
+  deletePathSudo,
   storageAgeHistogram,
   storageCancelScan,
   storageCategorySizes,
@@ -602,20 +603,31 @@ export function useStorageAnalyzer() {
    * inline and leave the row in place.
    */
   const deleteLargestItem = useCallback(
-    async (path: string, kind: "file" | "folder") => {
+    async (path: string, kind: "file" | "folder", useSudo = false) => {
       const cycle = ++_fetchCycle;
       const l: StorageLogEntry[] = [];
       appendLog(
-        { level: "info", source: "largest", message: `Deleting ${kind}: ${path}` },
+        {
+          level: "info",
+          source: "largest",
+          message: `Deleting ${kind}${useSudo ? " (sudo)" : ""}: ${path}`,
+        },
         cycle,
         l,
       );
       flushLogs(l);
 
       try {
-        await deletePath(path);
+        if (useSudo) await deletePathSudo(path);
+        else await deletePath(path);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
+        // Tauri `AppError` comes across as a plain `{ code, message }` object,
+        // not an Error instance — extract `.message` explicitly so logs and
+        // toasts don't render `[object Object]`.
+        let msg: string;
+        if (e instanceof Error) msg = e.message;
+        else if (e && typeof e === "object" && "message" in e) msg = String(e.message);
+        else msg = String(e);
         const l2: StorageLogEntry[] = [];
         appendLog(
           { level: "error", source: "largest", message: `Delete failed: ${msg}` },
