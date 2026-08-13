@@ -1,0 +1,17 @@
+services:
+  test-vm-heavy:
+    build: .
+    container_name: harborscp-test-vm-heavy
+    hostname: heavy-test-vm
+    ports:
+      - "2223:22"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - heavy-logs:/var/log/test
+      - heavy-appdata:/var/lib/appdata
+    restart: unless-stopped
+    privileged: false
+
+volumes:
+  heavy-logs:
+  heavy-appdata:
